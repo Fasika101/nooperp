@@ -1,0 +1,31 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+/* Tiny padding between sidebar and main content */
+.fi-main {
+    @apply ps-3 pe-4 md:ps-4 md:pe-6 lg:ps-4 lg:pe-8;
+}
+
+/* Allow main content to use full width instead of max-width constraint */
+:is(.fi-main, .fi-simple-main).fi-width-7xl {
+    max-width: 100%;
+}
+
+.fi-page-header-main-ctn {
+    @apply py-4;
+}
+
+.fi-page-content {
+    @apply gap-y-4;
+}
+
+/* Smaller stat cards on dashboard */
+.fi-wi-stats-overview-stat {
+    @apply p-4;
+}
+
+.fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-value {
+    @apply text-2xl;
+}
