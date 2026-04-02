@@ -20,7 +20,16 @@
         @endif
     </head>
     @php
+        use App\Support\PublicLanding;
+
         $filamentLoginUrl = url('/admin/login');
+        [$feature1Title, $feature1Text] = PublicLanding::featureOne();
+        [$feature2Title, $feature2Text] = PublicLanding::featureTwo();
+        $heroTitle = PublicLanding::heroTitle();
+        $heroLead = PublicLanding::heroLead();
+        $ctaLabel = PublicLanding::primaryButtonLabel();
+        $brandName = PublicLanding::brandName();
+        $logoUrl = PublicLanding::logoUrl();
     @endphp
     <body class="bg-[#FDFDFC] dark:bg-[#0a0a0a] text-[#1b1b18] flex p-6 lg:p-8 items-center lg:justify-center min-h-screen flex-col">
         <header class="w-full lg:max-w-4xl max-w-[335px] text-sm mb-6">
@@ -45,8 +54,8 @@
         <div class="flex items-center justify-center w-full transition-opacity opacity-100 duration-750 lg:grow starting:opacity-0">
             <main class="flex max-w-[335px] w-full flex-col-reverse lg:max-w-4xl lg:flex-row">
                 <div class="text-[13px] leading-[20px] flex-1 p-6 pb-12 lg:p-20 bg-white dark:bg-[#161615] dark:text-[#EDEDEC] shadow-[inset_0px_0px_0px_1px_rgba(26,26,0,0.16)] dark:shadow-[inset_0px_0px_0px_1px_#fffaed2d] rounded-bl-lg rounded-br-lg lg:rounded-tl-lg lg:rounded-br-none">
-                    <h1 class="mb-1 font-medium">Liba Digitals ERP</h1>
-                    <p class="mb-2 text-[#706f6c] dark:text-[#A1A09A]">Unified operations for retail and optical businesses — sales, POS, stock, finance, and inventory in one place.</p>
+                    <h1 class="mb-1 font-medium">{{ $heroTitle }}</h1>
+                    <p class="mb-2 text-[#706f6c] dark:text-[#A1A09A]">{{ $heroLead }}</p>
                     <ul class="flex flex-col mb-4 lg:mb-6">
                         <li class="flex items-center gap-4 py-2 relative before:border-l before:border-[#e3e3e0] dark:before:border-[#3E3E3A] before:top-1/2 before:bottom-0 before:left-[0.4rem] before:absolute">
                             <span class="relative py-1 bg-white dark:bg-[#161615]">
@@ -55,8 +64,8 @@
                                 </span>
                             </span>
                             <span>
-                                <span class="font-medium text-[#1b1b18] dark:text-[#EDEDEC]">Inventory &amp; purchasing</span>
-                                — track products, restocks, categories, and stock levels across your catalog.
+                                <span class="font-medium text-[#1b1b18] dark:text-[#EDEDEC]">{{ $feature1Title }}</span>
+                                — {{ $feature1Text }}
                             </span>
                         </li>
                         <li class="flex items-center gap-4 py-2 relative before:border-l before:border-[#e3e3e0] dark:before:border-[#3E3E3A] before:bottom-1/2 before:top-0 before:left-[0.4rem] before:absolute">
@@ -66,36 +75,27 @@
                                 </span>
                             </span>
                             <span>
-                                <span class="font-medium text-[#1b1b18] dark:text-[#EDEDEC]">Sales &amp; finance</span>
-                                — orders, POS, customers, bank accounts, expenses, and reporting in the admin panel.
+                                <span class="font-medium text-[#1b1b18] dark:text-[#EDEDEC]">{{ $feature2Title }}</span>
+                                — {{ $feature2Text }}
                             </span>
                         </li>
                     </ul>
                     <ul class="flex gap-3 text-sm leading-normal">
                         <li>
                             <a href="{{ $filamentLoginUrl }}" class="inline-block dark:bg-[#eeeeec] dark:border-[#eeeeec] dark:text-[#1C1C1A] dark:hover:bg-white dark:hover:border-white hover:bg-black hover:border-black px-5 py-1.5 bg-[#1b1b18] rounded-sm border border-black text-white text-sm leading-normal">
-                                Log in now
+                                {{ $ctaLabel }}
                             </a>
                         </li>
                     </ul>
                 </div>
                 <div class="bg-white dark:bg-[#161615] relative lg:-ml-px -mb-px lg:mb-0 rounded-t-lg lg:rounded-t-none lg:rounded-r-lg w-full lg:w-[438px] shrink-0 overflow-hidden flex flex-col min-h-[320px] lg:min-h-[420px]">
                     <div class="relative z-10 flex flex-1 flex-col items-center justify-center px-8 py-12 lg:py-16">
-                        @php
-                            $logoSvg = public_path('images/logo.svg');
-                            $logoPng = public_path('images/logo.png');
-                            $logoWebp = public_path('images/logo.webp');
-                        @endphp
-                        @if (file_exists($logoSvg))
-                            <img src="{{ asset('images/logo.svg') }}" alt="{{ config('app.name', 'Liba Digitals') }}" class="w-full max-w-[280px] h-auto object-contain drop-shadow-sm" />
-                        @elseif (file_exists($logoPng))
-                            <img src="{{ asset('images/logo.png') }}" alt="{{ config('app.name', 'Liba Digitals') }}" class="w-full max-w-[280px] h-auto object-contain drop-shadow-sm" />
-                        @elseif (file_exists($logoWebp))
-                            <img src="{{ asset('images/logo.webp') }}" alt="{{ config('app.name', 'Liba Digitals') }}" class="w-full max-w-[280px] h-auto object-contain drop-shadow-sm" />
+                        @if ($logoUrl)
+                            <img src="{{ $logoUrl }}" alt="{{ $brandName }}" class="w-full max-w-[280px] h-auto object-contain drop-shadow-sm" />
                         @else
                             <div class="text-center transition-all translate-y-0 opacity-100 max-w-none duration-750">
-                                <p class="text-[#F53003] dark:text-[#F61500] text-3xl sm:text-4xl font-bold tracking-tight leading-none">Liba Digitals</p>
-                                <p class="text-[#706f6c] dark:text-[#A1A09A] text-sm font-medium mt-2 tracking-wide uppercase">ERP &amp; inventory systems</p>
+                                <p class="text-[#F53003] dark:text-[#F61500] text-3xl sm:text-4xl font-bold tracking-tight leading-none">{{ $brandName }}</p>
+                                <p class="text-[#706f6c] dark:text-[#A1A09A] text-sm font-medium mt-2 tracking-wide uppercase">{{ __('ERP & inventory systems') }}</p>
                             </div>
                         @endif
                     </div>

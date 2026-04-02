@@ -7,6 +7,7 @@ use App\Filament\Pages\DataWipePage;
 use App\Filament\Pages\EditProfilePage;
 use App\Filament\Pages\FinancePage;
 use App\Filament\Pages\IntegrationsPage;
+use App\Filament\Pages\LandingPageSettingsPage;
 use App\Filament\Pages\MyProjectsPage;
 use App\Filament\Pages\MyTasksPage;
 use App\Filament\Pages\PosPage;
@@ -74,6 +75,7 @@ class AdminPanelProvider extends PanelProvider
                 FinancePage::class,
                 ProfitLossReportPage::class,
                 SettingsPage::class,
+                LandingPageSettingsPage::class,
                 IntegrationsPage::class,
                 DataWipePage::class,
                 TelegramCrmReportPage::class,

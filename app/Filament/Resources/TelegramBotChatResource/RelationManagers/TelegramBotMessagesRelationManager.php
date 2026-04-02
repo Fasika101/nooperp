@@ -2,22 +2,29 @@
 
 namespace App\Filament\Resources\TelegramBotChatResource\RelationManagers;
 
-use App\Models\TelegramBotMessage;
 use App\Services\TelegramBotService;
-use Filament\Actions\CreateAction;
-use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\RenderHook;
+use Filament\Schemas\Components\View as SchemaView;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\View\PanelsRenderHook;
 use Throwable;
 
 class TelegramBotMessagesRelationManager extends RelationManager
 {
     protected static string $relationship = 'messages';
 
-    protected static ?string $title = 'Messages';
+    protected static ?string $title = 'Conversation';
+
+    public string $messageDraft = '';
+
+    public function isReadOnly(): bool
+    {
+        return false;
+    }
 
     public function form(Schema $schema): Schema
     {
@@ -25,55 +32,53 @@ class TelegramBotMessagesRelationManager extends RelationManager
             ->components([]);
     }
 
+    public function content(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                $this->getTabsContentComponent(),
+                RenderHook::make(PanelsRenderHook::RESOURCE_RELATION_MANAGER_BEFORE),
+                SchemaView::make('filament.resources.telegram-bot-chats.chat-thread'),
+                RenderHook::make(PanelsRenderHook::RESOURCE_RELATION_MANAGER_AFTER),
+            ]);
+    }
+
     public function table(Table $table): Table
     {
         return $table
             ->recordTitleAttribute('telegram_message_id')
             ->columns([
-                Tables\Columns\TextColumn::make('sent_at')
-                    ->dateTime()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('direction')
-                    ->badge()
-                    ->color(fn (string $state): string => $state === TelegramBotMessage::DIRECTION_OUTGOING ? 'info' : 'success'),
                 Tables\Columns\TextColumn::make('text')
-                    ->limit(200)
-                    ->wrap(),
+                    ->label('')
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('sent_at', 'desc')
-            ->headerActions([
-                CreateAction::make('send_message')
-                    ->label('Send message')
-                    ->icon('heroicon-o-paper-airplane')
-                    ->form([
-                        Textarea::make('text')
-                            ->label('Message')
-                            ->required()
-                            ->rows(4)
-                            ->maxLength(4096),
-                    ])
-                    ->action(function (array $data): void {
-                        $chat = $this->getOwnerRecord();
-                        try {
-                            app(TelegramBotService::class)->sendTextToChat($chat, $data['text']);
-                            Notification::make()
-                                ->success()
-                                ->title('Message sent')
-                                ->send();
-                        } catch (Throwable $e) {
-                            Notification::make()
-                                ->danger()
-                                ->title('Failed to send')
-                                ->body($e->getMessage())
-                                ->send();
-                        }
-                    }),
-            ])
-            ->actions([
-                //
-            ])
-            ->bulkActions([
-                //
-            ]);
+            ->paginated(false);
+    }
+
+    public function sendChatMessage(): void
+    {
+        $this->validate([
+            'messageDraft' => ['required', 'string', 'max:4096'],
+        ]);
+
+        $chat = $this->getOwnerRecord();
+        $text = trim($this->messageDraft);
+
+        try {
+            app(TelegramBotService::class)->sendTextToChat($chat, $text);
+            $this->messageDraft = '';
+            $this->js('setTimeout(() => { const el = document.querySelector("[data-telegram-thread]"); if (el) el.scrollTop = el.scrollHeight; }, 75);');
+            Notification::make()
+                ->success()
+                ->title(__('Message sent'))
+                ->send();
+        } catch (Throwable $e) {
+            Notification::make()
+                ->danger()
+                ->title(__('Failed to send'))
+                ->body($e->getMessage())
+                ->send();
+        }
     }
 }
