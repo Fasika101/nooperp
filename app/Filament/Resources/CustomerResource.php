@@ -49,6 +49,11 @@ class CustomerResource extends Resource
                     ->disabled()
                     ->dehydrated(false)
                     ->visible(fn (?Customer $record): bool => filled($record?->telegram_peer_id)),
+                TextInput::make('telegram_bot_chat_id')
+                    ->label('Telegram bot chat (internal ID)')
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->visible(fn (?Customer $record): bool => filled($record?->telegram_bot_chat_id)),
             ]);
     }
 

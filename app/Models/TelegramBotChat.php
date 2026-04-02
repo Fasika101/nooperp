@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class TelegramBotChat extends Model
 {
@@ -31,6 +32,11 @@ class TelegramBotChat extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(TelegramBotMessage::class);
+    }
+
+    public function customer(): HasOne
+    {
+        return $this->hasOne(Customer::class);
     }
 
     public function getDisplayTitleAttribute(): string

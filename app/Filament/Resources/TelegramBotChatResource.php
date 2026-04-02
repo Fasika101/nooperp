@@ -4,8 +4,10 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\TelegramBotChatResource\Pages;
 use App\Filament\Resources\TelegramBotChatResource\RelationManagers\TelegramBotMessagesRelationManager;
+use App\Models\Customer;
 use App\Models\TelegramBotChat;
 use Filament\Actions\ViewAction;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -57,6 +59,7 @@ class TelegramBotChatResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('customer'))
             ->columns([
                 Tables\Columns\TextColumn::make('title')
                     ->label('Chat')
@@ -71,6 +74,12 @@ class TelegramBotChatResource extends Resource
                 Tables\Columns\TextColumn::make('last_message_at')
                     ->dateTime()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('customer.name')
+                    ->label('Customer')
+                    ->placeholder('—')
+                    ->url(fn (TelegramBotChat $record): ?string => $record->customer instanceof Customer
+                        ? CustomerResource::getUrl('edit', ['record' => $record->customer])
+                        : null),
             ])
             ->defaultSort('last_message_at', 'desc')
             ->filters([

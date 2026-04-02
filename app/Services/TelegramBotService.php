@@ -65,17 +65,33 @@ class TelegramBotService
      *
      * @throws \RuntimeException
      */
-    public function sendTextToChat(TelegramBotChat $chat, string $text): TelegramBotMessage
-    {
+    /**
+     * @param  array<string, mixed>|null  $replyMarkup  Telegram ReplyKeyboardMarkup or similar (will be JSON-encoded)
+     *
+     * @throws \RuntimeException
+     */
+    public function sendTextToChat(
+        TelegramBotChat $chat,
+        string $text,
+        ?array $replyMarkup = null,
+        bool $removeKeyboard = false,
+    ): TelegramBotMessage {
         $token = $this->getBotToken();
         if (! $token) {
             throw new \RuntimeException('Bot token is not configured.');
         }
 
-        $response = Http::timeout(30)->post(self::API_BASE.$token.'/sendMessage', [
+        $payload = [
             'chat_id' => $chat->telegram_chat_id,
             'text' => $text,
-        ]);
+        ];
+        if ($removeKeyboard) {
+            $payload['reply_markup'] = json_encode(['remove_keyboard' => true], JSON_THROW_ON_ERROR);
+        } elseif ($replyMarkup !== null) {
+            $payload['reply_markup'] = json_encode($replyMarkup, JSON_THROW_ON_ERROR);
+        }
+
+        $response = Http::timeout(30)->post(self::API_BASE.$token.'/sendMessage', $payload);
 
         $json = $response->json();
         if (! ($json['ok'] ?? false)) {
@@ -281,18 +297,26 @@ class TelegramBotService
 
         $from = $message['from'] ?? null;
 
-        $chat = TelegramBotChat::query()->updateOrCreate(
+        $chat = TelegramBotChat::query()->firstOrNew(
             ['telegram_chat_id' => $chatId],
-            [
-                'type' => (string) ($chatData['type'] ?? 'private'),
-                'title' => $chatData['title'] ?? null,
-                'username' => $chatData['username'] ?? null,
-                'first_name' => $chatData['first_name'] ?? ($from['first_name'] ?? null),
-                'last_name' => $chatData['last_name'] ?? ($from['last_name'] ?? null),
-                'last_message_at' => $sentAt,
-                'meta' => $isEdited ? ['edited' => true] : null,
-            ]
         );
+
+        $chat->fill([
+            'type' => (string) ($chatData['type'] ?? 'private'),
+            'title' => $chatData['title'] ?? null,
+            'username' => $chatData['username'] ?? null,
+            'first_name' => $chatData['first_name'] ?? (is_array($from) ? ($from['first_name'] ?? null) : null),
+            'last_name' => $chatData['last_name'] ?? (is_array($from) ? ($from['last_name'] ?? null) : null),
+            'last_message_at' => $sentAt,
+        ]);
+
+        $chat->save();
+
+        if ($isEdited) {
+            $meta = $chat->meta ?? [];
+            $meta['edited'] = true;
+            $chat->update(['meta' => $meta]);
+        }
 
         TelegramBotMessage::query()->updateOrCreate(
             [
@@ -312,7 +336,13 @@ class TelegramBotService
             'last_message_at' => $sentAt,
         ]);
 
-        $this->maybeSendWelcomeReply($chat, is_string($text) ? $text : null);
+        $chat->refresh();
+
+        try {
+            app(TelegramBotCustomerOnboardingService::class)->handleIncoming($chat, $message, $text);
+        } catch (Throwable $e) {
+            Log::warning('Telegram customer onboarding: '.$e->getMessage(), ['exception' => $e]);
+        }
     }
 
     /**
@@ -353,31 +383,6 @@ class TelegramBotService
         }
 
         return '[non-text message]';
-    }
-
-    /**
-     * Telegram shows nothing unless the bot calls sendMessage. Reply to /start so operators can confirm the hook works.
-     */
-    protected function maybeSendWelcomeReply(TelegramBotChat $chat, ?string $text): void
-    {
-        if (! is_string($text) || $text === '') {
-            return;
-        }
-
-        if (! str_starts_with(trim($text), '/start')) {
-            return;
-        }
-
-        $msg = config('integrations.telegram_welcome_message');
-        if (! is_string($msg) || trim($msg) === '') {
-            return;
-        }
-
-        try {
-            $this->sendTextToChat($chat, $msg);
-        } catch (Throwable $e) {
-            Log::warning('Telegram bot welcome reply failed: '.$e->getMessage(), ['exception' => $e]);
-        }
     }
 
     public function logWebhookError(Throwable $e): void
