@@ -11,15 +11,21 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\View\PanelsRenderHook;
+use Livewire\WithFileUploads;
 use Throwable;
 
 class TelegramBotMessagesRelationManager extends RelationManager
 {
+    use WithFileUploads;
+
     protected static string $relationship = 'messages';
 
     protected static ?string $title = 'Conversation';
 
     public string $messageDraft = '';
+
+    /** @var mixed */
+    public $attachment = null;
 
     public function isReadOnly(): bool
     {
@@ -58,15 +64,64 @@ class TelegramBotMessagesRelationManager extends RelationManager
 
     public function sendChatMessage(): void
     {
+        $chat = $this->getOwnerRecord();
+        $bots = app(TelegramBotService::class);
+
+        if ($this->attachment) {
+            $this->validate([
+                'attachment' => [
+                    'required',
+                    'file',
+                    'max:51200',
+                ],
+                'messageDraft' => ['nullable', 'string', 'max:1024'],
+            ]);
+
+            $upload = $this->attachment;
+            $path = method_exists($upload, 'getRealPath') ? $upload->getRealPath() : null;
+            if (! is_string($path) || $path === '' || ! is_readable($path)) {
+                $path = method_exists($upload, 'path') ? $upload->path() : null;
+            }
+            $name = method_exists($upload, 'getClientOriginalName') ? $upload->getClientOriginalName() : 'upload';
+            $caption = trim($this->messageDraft);
+
+            try {
+                if (! is_string($path) || $path === '' || ! is_readable($path)) {
+                    throw new \RuntimeException('Could not read the uploaded file.');
+                }
+
+                $bots->sendAttachmentToChat(
+                    $chat,
+                    $path,
+                    is_string($name) && $name !== '' ? $name : 'upload',
+                    $caption !== '' ? $caption : null
+                );
+                $this->messageDraft = '';
+                $this->attachment = null;
+                $this->js('setTimeout(() => { const el = document.querySelector("[data-telegram-thread]"); if (el) el.scrollTop = el.scrollHeight; }, 75);');
+                Notification::make()
+                    ->success()
+                    ->title(__('Message sent'))
+                    ->send();
+            } catch (Throwable $e) {
+                Notification::make()
+                    ->danger()
+                    ->title(__('Failed to send'))
+                    ->body($e->getMessage())
+                    ->send();
+            }
+
+            return;
+        }
+
         $this->validate([
             'messageDraft' => ['required', 'string', 'max:4096'],
         ]);
 
-        $chat = $this->getOwnerRecord();
         $text = trim($this->messageDraft);
 
         try {
-            app(TelegramBotService::class)->sendTextToChat($chat, $text);
+            $bots->sendTextToChat($chat, $text);
             $this->messageDraft = '';
             $this->js('setTimeout(() => { const el = document.querySelector("[data-telegram-thread]"); if (el) el.scrollTop = el.scrollHeight; }, 75);');
             Notification::make()

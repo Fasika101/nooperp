@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ReceiptController;
+use App\Http\Controllers\TelegramBotAttachmentController;
 use App\Http\Controllers\TelegramBotWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,4 +24,6 @@ Route::get('/', function () {
 Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('/receipt/{order}', [ReceiptController::class, 'show'])->name('receipt.show');
     Route::get('/receipt/{order}/pdf', [ReceiptController::class, 'pdf'])->name('receipt.pdf');
+    Route::get('/telegram-bot/messages/{message}/attachment', TelegramBotAttachmentController::class)
+        ->name('telegram.bot.message.attachment');
 });

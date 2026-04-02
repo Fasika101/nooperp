@@ -3,6 +3,267 @@
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
 
+/* Telegram bot chat (relation manager) — plain CSS so layout works without Tailwind scanning this view */
+.fi-telegram-chat {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--gray-950, #030712) 10%, transparent);
+    background: var(--color-white, #fff);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.dark .fi-telegram-chat {
+    border-color: color-mix(in oklab, var(--gray-500, #6b7280) 35%, transparent);
+    background: var(--gray-900, #111827);
+}
+
+.fi-telegram-chat__thread {
+    max-height: min(28rem, 55vh);
+    min-height: 12rem;
+    overflow-y: auto;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+
+.fi-telegram-chat__row {
+    display: flex;
+    width: 100%;
+    margin-bottom: 0.75rem;
+    box-sizing: border-box;
+}
+
+.fi-telegram-chat__row--out {
+    justify-content: flex-end;
+}
+
+.fi-telegram-chat__row--in {
+    justify-content: flex-start;
+}
+
+.fi-telegram-chat__bubble {
+    max-width: min(100%, 28rem);
+    min-width: 0;
+}
+
+.fi-telegram-chat__bubble-inner {
+    display: inline-block;
+    border-radius: 1rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+    word-break: break-word;
+}
+
+.fi-telegram-chat__bubble-inner--out {
+    border-top-right-radius: 0.25rem;
+    background: var(--primary-600, #2563eb);
+    color: #fff;
+}
+
+.fi-telegram-chat__bubble-inner--in {
+    border-top-left-radius: 0.25rem;
+    background: var(--gray-100, #f3f4f6);
+    color: var(--gray-900, #111827);
+}
+
+.dark .fi-telegram-chat__bubble-inner--in {
+    background: var(--gray-800, #1f2937);
+    color: var(--gray-100, #f3f4f6);
+}
+
+.fi-telegram-chat__body {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.fi-telegram-chat__media {
+    margin-top: 0.35rem;
+    max-width: 100%;
+}
+
+.fi-telegram-chat__media img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    display: block;
+}
+
+.fi-telegram-chat__media-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: underline;
+    color: inherit;
+}
+
+.fi-telegram-chat__meta {
+    margin-top: 0.25rem;
+    padding: 0 0.25rem;
+    font-size: 0.6875rem;
+    color: var(--gray-500, #6b7280);
+}
+
+.fi-telegram-chat__meta--out {
+    text-align: right;
+}
+
+.fi-telegram-chat__composer {
+    padding: 0.75rem;
+    border-top: 1px solid color-mix(in oklab, var(--gray-950, #030712) 10%, transparent);
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.dark .fi-telegram-chat__composer {
+    border-top-color: color-mix(in oklab, var(--gray-500, #6b7280) 35%, transparent);
+}
+
+.fi-telegram-chat__composer form {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+    .fi-telegram-chat__composer form {
+        flex-direction: row;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+}
+
+.fi-telegram-chat__composer-fields {
+    flex: 1 1 12rem;
+    min-width: min(100%, 18rem);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    box-sizing: border-box;
+}
+
+.fi-telegram-chat__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.fi-telegram-chat__textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 4.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    border-radius: 0.5rem;
+    border: 1px solid color-mix(in oklab, var(--gray-950, #030712) 12%, transparent);
+    background: var(--color-white, #fff);
+    color: var(--gray-950, #030712);
+    resize: vertical;
+}
+
+.dark .fi-telegram-chat__textarea {
+    border-color: color-mix(in oklab, var(--gray-400, #9ca3af) 40%, transparent);
+    background: color-mix(in oklab, var(--color-white, #fff) 5%, transparent);
+    color: var(--color-white, #fff);
+}
+
+.fi-telegram-chat__textarea:focus {
+    outline: 2px solid var(--primary-600, #2563eb);
+    outline-offset: 1px;
+}
+
+.fi-telegram-chat__file {
+    font-size: 0.8125rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fi-telegram-chat__actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.fi-telegram-chat__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    border: none;
+    cursor: pointer;
+    background: var(--primary-600, #2563eb);
+    color: #fff;
+    white-space: nowrap;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+    .fi-telegram-chat__btn {
+        width: auto;
+        min-width: 5rem;
+    }
+}
+
+.fi-telegram-chat__btn:hover {
+    filter: brightness(1.05);
+}
+
+.fi-telegram-chat__btn-secondary {
+    background: var(--gray-200, #e5e7eb);
+    color: var(--gray-900, #111827);
+}
+
+.dark .fi-telegram-chat__btn-secondary {
+    background: var(--gray-700, #374151);
+    color: var(--gray-100, #f3f4f6);
+}
+
+.fi-telegram-chat__error {
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+    color: var(--danger-600, #dc2626);
+}
+
+.dark .fi-telegram-chat__error {
+    color: var(--danger-400, #f87171);
+}
+
+.fi-telegram-chat__empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: var(--gray-500, #6b7280);
+}
+
 /* Tiny padding between sidebar and main content */
 .fi-main {
     @apply ps-3 pe-4 md:ps-4 md:pe-6 lg:ps-4 lg:pe-8;
