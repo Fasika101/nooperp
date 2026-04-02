@@ -54,7 +54,7 @@ class IntegrationsPage extends Page
             ->components([
                 Section::make('Telegram bot')
                     ->description(
-                        'Create a bot with @BotFather, then paste the token here. Production requires HTTPS; on localhost use ngrok (or similar) so Telegram can reach your webhook. After saving the token, run: php artisan telegram:bot:set-webhook'
+                        'Create a bot with @BotFather, then paste the token here (or set TELEGRAM_BOT_TOKEN in .env on the server). Production needs HTTPS and APP_URL must match your public site URL. After saving, run php artisan telegram:bot:set-webhook. If you add a webhook secret here, run set-webhook again so Telegram sends the secret header (otherwise the server returns 403). Diagnose with php artisan telegram:bot:status. Messages are stored under Telegram → Bot chats; send /start in Telegram to get an auto-reply.'
                     )
                     ->schema([
                         TextInput::make('telegram_bot_token')

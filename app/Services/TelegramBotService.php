@@ -16,7 +16,26 @@ class TelegramBotService
 
     public function getBotToken(): ?string
     {
-        return Setting::getEncrypted('integrations_telegram_bot_token');
+        $fromDb = Setting::getEncrypted('integrations_telegram_bot_token');
+        if ($fromDb !== null && $fromDb !== '') {
+            return $fromDb;
+        }
+
+        $fromEnv = config('integrations.telegram_bot_token');
+
+        return is_string($fromEnv) && trim($fromEnv) !== '' ? trim($fromEnv) : null;
+    }
+
+    public function getWebhookSecret(): ?string
+    {
+        $fromDb = Setting::getEncrypted('integrations_telegram_webhook_secret');
+        if ($fromDb !== null && $fromDb !== '') {
+            return $fromDb;
+        }
+
+        $fromEnv = config('integrations.telegram_webhook_secret');
+
+        return is_string($fromEnv) && trim($fromEnv) !== '' ? trim($fromEnv) : null;
     }
 
     public function hasBotToken(): bool
@@ -166,6 +185,33 @@ class TelegramBotService
             'message_count' => $chat->messages()->count(),
             'last_message_at' => $sentAt,
         ]);
+
+        $this->maybeSendWelcomeReply($chat, is_string($text) ? $text : null);
+    }
+
+    /**
+     * Telegram shows nothing unless the bot calls sendMessage. Reply to /start so operators can confirm the hook works.
+     */
+    protected function maybeSendWelcomeReply(TelegramBotChat $chat, ?string $text): void
+    {
+        if (! is_string($text) || $text === '' || $text === '[non-text message]') {
+            return;
+        }
+
+        if (! str_starts_with(trim($text), '/start')) {
+            return;
+        }
+
+        $msg = config('integrations.telegram_welcome_message');
+        if (! is_string($msg) || trim($msg) === '') {
+            return;
+        }
+
+        try {
+            $this->sendTextToChat($chat, $msg);
+        } catch (Throwable $e) {
+            Log::warning('Telegram bot welcome reply failed: '.$e->getMessage(), ['exception' => $e]);
+        }
     }
 
     public function logWebhookError(Throwable $e): void

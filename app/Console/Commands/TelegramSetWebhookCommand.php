@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Setting;
+use App\Services\TelegramBotService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
@@ -12,17 +12,17 @@ class TelegramSetWebhookCommand extends Command
 
     protected $description = 'Register Telegram bot webhook URL (uses APP_URL and integrations token)';
 
-    public function handle(): int
+    public function handle(TelegramBotService $bots): int
     {
-        $token = Setting::getEncrypted('integrations_telegram_bot_token');
+        $token = $bots->getBotToken();
         if (! $token) {
-            $this->error('No bot token saved. Set it in Admin → Settings → Integrations.');
+            $this->error('No bot token. Set TELEGRAM_BOT_TOKEN in .env or save it in Admin → Settings → Integrations.');
 
             return self::FAILURE;
         }
 
         $url = route('telegram.bot.webhook', absolute: true);
-        $secret = Setting::getEncrypted('integrations_telegram_webhook_secret');
+        $secret = $bots->getWebhookSecret();
 
         $params = [
             'url' => $url,
