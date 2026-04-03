@@ -60,7 +60,7 @@ return [
 
     'telegram_onboarding_ask_email' => env(
         'TELEGRAM_ONBOARDING_ASK_EMAIL',
-        'Thanks! Now send your email address.'
+        'Thanks! Send your email address, or reply skip (or /skip) if you prefer not to share one.'
     ),
 
     'telegram_onboarding_ask_address' => env(
@@ -105,7 +105,7 @@ return [
 
     'telegram_onboarding_invalid_email' => env(
         'TELEGRAM_ONBOARDING_INVALID_EMAIL',
-        'That email doesn\'t look valid. Please send a valid email address.'
+        'That doesn\'t look like a valid email. Send a proper address, or reply skip to continue without one.'
     ),
 
     'telegram_onboarding_invalid_address' => env(

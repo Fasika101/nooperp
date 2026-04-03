@@ -61,6 +61,12 @@ class TelegramBotCustomerOnboardingService
 
         $state = $this->getRegistrationState($chat);
 
+        if ($command === '/skip' && $state['step'] === self::STEP_EMAIL) {
+            $this->advanceToAddressStep($chat, $state['draft'], null);
+
+            return;
+        }
+
         if ($command !== null && $state['step'] !== null) {
             try {
                 $this->bots->sendTextToChat($chat, (string) config('integrations.telegram_onboarding_unknown_command'));
@@ -227,13 +233,27 @@ class TelegramBotCustomerOnboardingService
 
     protected function acceptEmail(TelegramBotChat $chat, string $text, array $draft): void
     {
+        if ($this->emailStepSkipped($text)) {
+            $this->advanceToAddressStep($chat, $draft, null);
+
+            return;
+        }
+
         if (strlen($text) > 190 || ! filter_var($text, FILTER_VALIDATE_EMAIL)) {
             $this->notifyValidation($chat, (string) config('integrations.telegram_onboarding_invalid_email'));
 
             return;
         }
 
-        $draft['email'] = $text;
+        $this->advanceToAddressStep($chat, $draft, $text);
+    }
+
+    /**
+     * @param  array{name: string, phone: string, email: string, address: string}  $draft
+     */
+    protected function advanceToAddressStep(TelegramBotChat $chat, array $draft, ?string $email): void
+    {
+        $draft['email'] = $email ?? '';
         $this->saveRegistrationState($chat, self::STEP_ADDRESS, $draft);
 
         try {
@@ -241,6 +261,13 @@ class TelegramBotCustomerOnboardingService
         } catch (Throwable $e) {
             Log::warning('Telegram onboarding address prompt failed: '.$e->getMessage(), ['exception' => $e]);
         }
+    }
+
+    protected function emailStepSkipped(string $text): bool
+    {
+        $t = strtolower(trim($text));
+
+        return in_array($t, ['skip', '-', '—', 'no', 'n/a', 'na', 'none'], true);
     }
 
     protected function acceptAddress(TelegramBotChat $chat, string $text, array $draft): void
@@ -253,17 +280,19 @@ class TelegramBotCustomerOnboardingService
 
         $draft['address'] = $text;
 
+        $email = trim((string) ($draft['email'] ?? ''));
+
         $customer = Customer::query()->updateOrCreate(
             ['telegram_bot_chat_id' => $chat->id],
             [
                 'name' => $draft['name'],
                 'phone' => $draft['phone'],
-                'email' => $draft['email'],
+                'email' => $email !== '' ? $email : null,
                 'address' => $draft['address'],
             ]
         );
 
-        $this->clearRegistration($chat);
+        $this->finishRegistrationSavingChatDisplayName($chat, $draft['name']);
 
         $done = (string) config('integrations.telegram_onboarding_complete');
         $done = str_replace(':id', (string) $customer->id, $done);
@@ -323,6 +352,14 @@ class TelegramBotCustomerOnboardingService
     {
         $meta = $chat->meta ?? [];
         unset($meta['registration']);
+        $chat->update(['meta' => $meta === [] ? null : $meta]);
+    }
+
+    protected function finishRegistrationSavingChatDisplayName(TelegramBotChat $chat, string $customerName): void
+    {
+        $meta = $chat->meta ?? [];
+        unset($meta['registration']);
+        $meta['customer_display_name'] = $customerName;
         $chat->update(['meta' => $meta === [] ? null : $meta]);
     }
 

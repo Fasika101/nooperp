@@ -44,6 +44,10 @@ class TelegramBotChat extends Model
         if ($this->title) {
             return $this->title;
         }
+        $crmName = $this->meta['customer_display_name'] ?? null;
+        if (is_string($crmName) && trim($crmName) !== '') {
+            return trim($crmName);
+        }
         $name = trim(($this->first_name ?? '').' '.($this->last_name ?? ''));
         if ($name !== '') {
             return $name;
