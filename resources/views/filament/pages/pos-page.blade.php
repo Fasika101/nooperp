@@ -594,6 +594,13 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                 <button type="button" wire:click="$set('showAddCustomerForm', true)">Add New Customer</button>
                                 <button type="button" wire:click="useWalkInCustomer">Walk-in</button>
                             </div>
+                            @if(count($cart) > 0 && $this->getSelectedCustomer()?->telegram_bot_chat_id)
+                                <div class="pos-cart-field" style="margin-top: 0.5rem;">
+                                    <x-filament::button color="gray" size="sm" wire:click="sendCartToTelegram" icon="heroicon-o-paper-airplane">
+                                        Send cart to Telegram
+                                    </x-filament::button>
+                                </div>
+                            @endif
                         @endif
                     </div>
 

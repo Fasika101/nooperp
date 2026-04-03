@@ -16,6 +16,7 @@ use App\Models\Product;
 use App\Models\ProductOption;
 use App\Models\Setting;
 use App\Models\TaxType;
+use App\Services\PosTelegramService;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -23,6 +24,7 @@ use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class PosPage extends Page
@@ -564,6 +566,57 @@ class PosPage extends Page
         return Customer::find($this->customerId);
     }
 
+    public function sendCartToTelegram(): void
+    {
+        if ($this->cart === []) {
+            Notification::make()
+                ->warning()
+                ->title('Cart is empty')
+                ->send();
+
+            return;
+        }
+
+        if (! $this->customerId) {
+            Notification::make()
+                ->warning()
+                ->title('Select a customer')
+                ->body('Choose a customer who has Telegram linked (via bot registration).')
+                ->send();
+
+            return;
+        }
+
+        $customer = Customer::query()->with('telegramBotChat')->find($this->customerId);
+        if (! $customer || ! $customer->telegram_bot_chat_id) {
+            Notification::make()
+                ->warning()
+                ->title('Telegram not linked')
+                ->body('This customer has no Telegram chat. They should use your bot and complete contact registration first.')
+                ->send();
+
+            return;
+        }
+
+        try {
+            app(PosTelegramService::class)->sendCartPreviewToCustomer(
+                $customer,
+                $this->cart,
+                $this->getDefaultCurrency()
+            );
+            Notification::make()
+                ->success()
+                ->title('Sent to Telegram')
+                ->send();
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->danger()
+                ->title('Telegram send failed')
+                ->body($e->getMessage())
+                ->send();
+        }
+    }
+
     public function updatedCustomerSearch(): void
     {
         $selectedCustomer = $this->getSelectedCustomer();
@@ -756,6 +809,17 @@ class PosPage extends Page
                     'status' => 'completed',
                 ]);
             });
+
+            if ($order instanceof Order) {
+                try {
+                    $order->load(['orderItems.product', 'customer', 'taxType']);
+                    if ($order->customer) {
+                        app(PosTelegramService::class)->sendOrderReceiptToCustomer($order->customer, $order);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Telegram receipt after POS sale: '.$e->getMessage(), ['exception' => $e]);
+                }
+            }
 
             $lastOrderId = $order->id ?? null;
             $this->cart = [];
