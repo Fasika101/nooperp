@@ -334,6 +334,7 @@ class TelegramBotService
         $chat->update([
             'message_count' => $chat->messages()->count(),
             'last_message_at' => $sentAt,
+            'last_incoming_message_at' => $sentAt,
         ]);
 
         $chat->refresh();

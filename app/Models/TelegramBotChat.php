@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -16,6 +17,8 @@ class TelegramBotChat extends Model
         'first_name',
         'last_name',
         'last_message_at',
+        'last_incoming_message_at',
+        'staff_last_read_at',
         'message_count',
         'meta',
     ];
@@ -25,6 +28,8 @@ class TelegramBotChat extends Model
         return [
             'telegram_chat_id' => 'integer',
             'last_message_at' => 'datetime',
+            'last_incoming_message_at' => 'datetime',
+            'staff_last_read_at' => 'datetime',
             'meta' => 'array',
         ];
     }
@@ -37,6 +42,19 @@ class TelegramBotChat extends Model
     public function customer(): HasOne
     {
         return $this->hasOne(Customer::class);
+    }
+
+    /**
+     * Chats with inbound messages that staff has not “opened” since (or never read).
+     */
+    public function scopeUnreadByStaff(Builder $query): void
+    {
+        $query
+            ->whereNotNull('last_incoming_message_at')
+            ->where(function (Builder $q): void {
+                $q->whereNull('staff_last_read_at')
+                    ->orWhereColumn('last_incoming_message_at', '>', 'staff_last_read_at');
+            });
     }
 
     public function getDisplayTitleAttribute(): string

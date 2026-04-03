@@ -7,12 +7,12 @@ use App\Filament\Resources\TelegramBotChatResource\RelationManagers\TelegramBotM
 use App\Models\Customer;
 use App\Models\TelegramBotChat;
 use Filament\Actions\ViewAction;
-use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TelegramBotChatResource extends Resource
 {
@@ -54,6 +54,23 @@ class TelegramBotChatResource extends Resource
                     ->label('Last message')
                     ->disabled(),
             ]);
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $count = TelegramBotChat::query()->unreadByStaff()->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'danger';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Telegram chats with new customer messages';
     }
 
     public static function table(Table $table): Table
