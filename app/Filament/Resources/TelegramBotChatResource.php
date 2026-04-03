@@ -10,6 +10,7 @@ use Filament\Actions\ViewAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -78,6 +79,15 @@ class TelegramBotChatResource extends Resource
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->with('customer'))
             ->columns([
+                Tables\Columns\IconColumn::make('unread')
+                    ->label('')
+                    ->alignCenter()
+                    ->boolean()
+                    ->getStateUsing(fn (TelegramBotChat $record): bool => $record->isUnreadByStaff())
+                    ->trueIcon(Heroicon::OutlinedBellAlert)
+                    ->trueColor('danger')
+                    ->falseIcon(false)
+                    ->tooltip(fn (TelegramBotChat $record): ?string => $record->isUnreadByStaff() ? __('Unread messages') : null),
                 Tables\Columns\TextColumn::make('title')
                     ->label('Chat')
                     ->getStateUsing(fn (TelegramBotChat $record): string => $record->display_title)

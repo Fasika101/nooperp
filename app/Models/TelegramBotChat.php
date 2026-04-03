@@ -57,6 +57,21 @@ class TelegramBotChat extends Model
             });
     }
 
+    public function isUnreadByStaff(): bool
+    {
+        $lastIn = $this->last_incoming_message_at;
+        if ($lastIn === null) {
+            return false;
+        }
+
+        $read = $this->staff_last_read_at;
+        if ($read === null) {
+            return true;
+        }
+
+        return $lastIn->greaterThan($read);
+    }
+
     public function getDisplayTitleAttribute(): string
     {
         if ($this->title) {
