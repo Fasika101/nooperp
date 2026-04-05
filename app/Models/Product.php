@@ -19,6 +19,9 @@ class Product extends Model
         'material_option_id',
         'shape_option_id',
         'brand_option_id',
+        'lens_width_mm',
+        'bridge_width_mm',
+        'temple_length_mm',
         'price',
         'original_price',
         'cost_price',
@@ -33,6 +36,9 @@ class Product extends Model
             'price' => 'decimal:2',
             'original_price' => 'decimal:2',
             'cost_price' => 'decimal:2',
+            'lens_width_mm' => 'decimal:1',
+            'bridge_width_mm' => 'decimal:1',
+            'temple_length_mm' => 'decimal:1',
             'is_service' => 'boolean',
         ];
     }
@@ -166,7 +172,7 @@ class Product extends Model
             return $this->name;
         }
 
-        return $this->name . ' — ' . implode(', ', $extra);
+        return $this->name.' — '.implode(', ', $extra);
     }
 
     public function size(): BelongsTo

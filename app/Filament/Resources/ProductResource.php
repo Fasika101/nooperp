@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
-use App\Filament\Resources\StockPurchaseResource;
 use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\Product;
@@ -15,10 +14,12 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -95,6 +96,36 @@ class ProductResource extends Resource
                     ->preload()
                     ->placeholder('No shape')
                     ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_SHAPE)),
+                Section::make('Frame size')
+                    ->description('Optional. Typical eyeglass box size, e.g. 54 □ 18 □ 140 (mm).')
+                    ->schema([
+                        TextInput::make('lens_width_mm')
+                            ->label('Lens width')
+                            ->numeric()
+                            ->suffix('mm')
+                            ->minValue(0)
+                            ->maxValue(999)
+                            ->step(0.1)
+                            ->placeholder('e.g. 54'),
+                        TextInput::make('bridge_width_mm')
+                            ->label('Bridge width')
+                            ->numeric()
+                            ->suffix('mm')
+                            ->minValue(0)
+                            ->maxValue(999)
+                            ->step(0.1)
+                            ->placeholder('e.g. 18'),
+                        TextInput::make('temple_length_mm')
+                            ->label('Temple length')
+                            ->numeric()
+                            ->suffix('mm')
+                            ->minValue(0)
+                            ->maxValue(999)
+                            ->step(0.1)
+                            ->placeholder('e.g. 140'),
+                    ])
+                    ->columns(3)
+                    ->collapsed(false),
                 TextInput::make('original_price')
                     ->label('Original/List Price')
                     ->numeric()
@@ -121,26 +152,38 @@ class ProductResource extends Resource
                     ->default(0)
                     ->minValue(0)
                     ->live(onBlur: true),
-                Select::make('initial_stock_branch_id')
-                    ->label('Initial Stock Branch')
-                    ->options(fn () => Branch::query()
-                        ->where('is_active', true)
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereKey(auth()->user()?->branch_id))
-                        ->orderByDesc('is_default')
-                        ->orderBy('name')
-                        ->pluck('name', 'id'))
-                    ->searchable()
-                    ->preload()
-                    ->live()
-                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false)
-                    ->dehydrated()
+                Repeater::make('initial_stock_allocations')
+                    ->label('Split initial stock by branch')
+                    ->schema([
+                        Select::make('branch_id')
+                            ->label('Branch')
+                            ->options(fn () => Branch::query()
+                                ->where('is_active', true)
+                                ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereKey(auth()->user()?->branch_id))
+                                ->orderByDesc('is_default')
+                                ->orderBy('name')
+                                ->pluck('name', 'id'))
+                            ->required()
+                            ->searchable()
+                            ->preload()
+                            ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
+                            ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false),
+                        TextInput::make('quantity')
+                            ->label('Units')
+                            ->numeric()
+                            ->minValue(1)
+                            ->required(),
+                    ])
+                    ->defaultItems(1)
+                    ->addActionLabel('Add branch')
+                    ->reorderable(false)
+                    ->columnSpanFull()
                     ->visible(fn (string $operation, Get $get): bool => $operation === 'create' && (int) ($get('stock') ?? 0) > 0)
-                    ->required(fn (string $operation, Get $get): bool => $operation === 'create' && (int) ($get('stock') ?? 0) > 0),
+                    ->helperText('Assign how many units go to each branch. The sum must equal Stock above.'),
                 Select::make('initial_stock_bank_account_id')
                     ->label('Pay Initial Stock From')
-                    ->options(fn (Get $get) => BankAccount::query()
-                        ->when($get('initial_stock_branch_id'), fn ($query, $branchId) => $query->where('branch_id', $branchId))
+                    ->options(fn () => BankAccount::query()
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
                         ->orderByDesc('is_default')
                         ->orderBy('name')
                         ->pluck('name', 'id'))
@@ -149,7 +192,7 @@ class ProductResource extends Resource
                     ->default(fn () => BankAccount::getDefaultAccountForBranch(Branch::getDefaultBranch()?->id)?->id)
                     ->visible(fn (string $operation, Get $get): bool => $operation === 'create' && (int) ($get('stock') ?? 0) > 0)
                     ->required(fn (string $operation, Get $get): bool => $operation === 'create' && (int) ($get('stock') ?? 0) > 0)
-                    ->helperText('Initial stock will be deducted from this account.'),
+                    ->helperText('One payment for the full initial purchase; stock is split across branches above.'),
                 DatePicker::make('initial_stock_date')
                     ->label('Initial Stock Date')
                     ->default(now())
@@ -177,7 +220,7 @@ class ProductResource extends Resource
                 Tables\Columns\ImageColumn::make('image')
                     ->disk('public')
                     ->circular()
-                    ->defaultImageUrl(fn ($record) => 'https://ui-avatars.com/api/?name=' . urlencode($record->name) . '&color=7F9CF5&background=EBF4FF'),
+                    ->defaultImageUrl(fn ($record) => 'https://ui-avatars.com/api/?name='.urlencode($record->name).'&color=7F9CF5&background=EBF4FF'),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
@@ -210,6 +253,24 @@ class ProductResource extends Resource
                         return $names !== [] ? implode(', ', $names) : (string) ($record->size?->name ?? '');
                     })
                     ->hidden(fn (): bool => ! Setting::isProductOptionFieldEnabled(ProductOption::TYPE_SIZE)),
+                Tables\Columns\TextColumn::make('frame_measurements')
+                    ->label('Frame mm')
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->getStateUsing(function (Product $record): string {
+                        $parts = [];
+                        if ($record->lens_width_mm !== null) {
+                            $parts[] = (string) $record->lens_width_mm;
+                        }
+                        if ($record->bridge_width_mm !== null) {
+                            $parts[] = (string) $record->bridge_width_mm;
+                        }
+                        if ($record->temple_length_mm !== null) {
+                            $parts[] = (string) $record->temple_length_mm;
+                        }
+
+                        return $parts !== [] ? implode('-', $parts) : '';
+                    }),
                 Tables\Columns\TextColumn::make('original_price')
                     ->label('List')
                     ->money($currency)

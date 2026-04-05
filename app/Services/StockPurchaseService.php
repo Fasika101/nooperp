@@ -14,6 +14,100 @@ use Illuminate\Validation\ValidationException;
 
 class StockPurchaseService
 {
+    /**
+     * Split one purchase across branches (single bank charge, one expense). One stock_purchases row per branch; only the first is linked to the expense.
+     *
+     * @param  array{product_id: int, unit_cost: float, sale_price: float, bank_account_id: int, date: string, vendor?: ?string, lines: list<array{branch_id: int, quantity: int}>}  $data
+     * @return list<StockPurchase>
+     */
+    public function createDistributed(array $data): array
+    {
+        $lines = self::mergeAllocationLines($data['lines'] ?? []);
+        if ($lines === []) {
+            throw ValidationException::withMessages([
+                'lines' => ['Add at least one branch with a quantity greater than zero.'],
+            ]);
+        }
+
+        $totalQty = array_sum(array_column($lines, 'quantity'));
+        $unitCost = (float) ($data['unit_cost'] ?? 0);
+        $totalCost = round($totalQty * $unitCost, 2);
+        $salePrice = (float) ($data['sale_price'] ?? 0);
+
+        return DB::transaction(function () use ($data, $lines, $totalQty, $unitCost, $totalCost, $salePrice): array {
+            $product = Product::query()->lockForUpdate()->findOrFail($data['product_id']);
+            $account = BankAccount::query()->lockForUpdate()->findOrFail($data['bank_account_id']);
+
+            if ((float) $account->current_balance < $totalCost) {
+                throw ValidationException::withMessages([
+                    'bank_account_id' => "Insufficient balance in {$account->name}.",
+                ]);
+            }
+
+            $oldStock = (int) $product->stock;
+            $oldCost = (float) ($product->cost_price ?? $product->original_price ?? 0);
+
+            $purchases = [];
+            foreach ($lines as $line) {
+                $branch = Branch::query()->findOrFail($line['branch_id']);
+                $qty = (int) $line['quantity'];
+                $lineTotal = round($qty * $unitCost, 2);
+
+                $purchase = StockPurchase::query()->create([
+                    'product_id' => $product->id,
+                    'branch_id' => $branch->id,
+                    'quantity' => $qty,
+                    'unit_cost' => $unitCost,
+                    'sale_price' => $salePrice,
+                    'total_cost' => $lineTotal,
+                    'vendor' => $data['vendor'] ?? null,
+                    'date' => $data['date'] ?? now()->toDateString(),
+                    'bank_account_id' => $account->id,
+                    'expense_id' => null,
+                ]);
+
+                self::incrementBranchStockAfterPurchase($product, $branch->id, $qty, $unitCost, $oldCost);
+
+                $purchases[] = $purchase;
+            }
+
+            $totalStock = $oldStock + $totalQty;
+            $product->update([
+                'cost_price' => $totalStock > 0
+                    ? round((($oldStock * $oldCost) + ($totalQty * $unitCost)) / $totalStock, 2)
+                    : $unitCost,
+                'price' => $salePrice,
+            ]);
+
+            $inventoryExpenseType = ExpenseType::query()->firstOrCreate(
+                ['name' => 'Inventory Purchase'],
+                ['is_active' => true],
+            );
+
+            $branchSummaries = [];
+            foreach ($lines as $line) {
+                $branch = Branch::query()->find($line['branch_id']);
+                $branchSummaries[] = ($branch?->name ?? '?').': '.(int) $line['quantity'];
+            }
+
+            $expense = Expense::query()->create([
+                'date' => $data['date'] ?? now()->toDateString(),
+                'amount' => $totalCost,
+                'expense_type_id' => $inventoryExpenseType->id,
+                'bank_account_id' => $account->id,
+                'branch_id' => $account->branch_id,
+                'vendor' => $data['vendor'] ?? null,
+                'description' => 'Restock: '.$product->name.' ('.$totalQty.' units): '.implode('; ', $branchSummaries),
+            ]);
+
+            $purchases[0]->update([
+                'expense_id' => $expense->id,
+            ]);
+
+            return $purchases;
+        });
+    }
+
     public function create(array $data): StockPurchase
     {
         $data['total_cost'] = round((float) ($data['quantity'] ?? 0) * (float) ($data['unit_cost'] ?? 0), 2);
@@ -45,21 +139,7 @@ class StockPurchaseService
             $oldCost = (float) ($product->cost_price ?? $product->original_price ?? 0);
             $totalStock = $oldStock + $newQty;
 
-            $branchStock = BranchProductStock::query()->firstOrNew([
-                'branch_id' => $branch->id,
-                'product_id' => $product->id,
-            ]);
-
-            $existingBranchQty = (int) ($branchStock->exists ? $branchStock->quantity : 0);
-            $existingBranchCost = (float) ($branchStock->avg_cost ?? $oldCost);
-            $branchTotalQty = $existingBranchQty + $newQty;
-
-            $branchStock->fill([
-                'quantity' => $branchTotalQty,
-                'avg_cost' => $branchTotalQty > 0
-                    ? round((($existingBranchQty * $existingBranchCost) + ($newQty * $newCost)) / $branchTotalQty, 2)
-                    : $newCost,
-            ])->save();
+            self::incrementBranchStockAfterPurchase($product, $branch->id, $newQty, $newCost, $oldCost);
 
             $product->update([
                 'cost_price' => $totalStock > 0
@@ -89,5 +169,43 @@ class StockPurchaseService
 
             return $purchase->fresh(['product', 'expense', 'bankAccount', 'branch']);
         });
+    }
+
+    /**
+     * @param  list<array{branch_id?: mixed, quantity?: mixed}>  $lines
+     * @return list<array{branch_id: int, quantity: int}>
+     */
+    public static function mergeAllocationLines(array $lines): array
+    {
+        $merged = [];
+        foreach ($lines as $line) {
+            $bid = (int) ($line['branch_id'] ?? 0);
+            $qty = (int) ($line['quantity'] ?? 0);
+            if ($bid <= 0 || $qty <= 0) {
+                continue;
+            }
+            $merged[$bid] = ($merged[$bid] ?? 0) + $qty;
+        }
+
+        return collect($merged)->map(fn (int $qty, int $bid) => ['branch_id' => $bid, 'quantity' => $qty])->values()->all();
+    }
+
+    protected static function incrementBranchStockAfterPurchase(Product $product, int $branchId, int $newQty, float $newCost, float $fallbackCost): void
+    {
+        $branchStock = BranchProductStock::query()->firstOrNew([
+            'branch_id' => $branchId,
+            'product_id' => $product->id,
+        ]);
+
+        $existingBranchQty = (int) ($branchStock->exists ? $branchStock->quantity : 0);
+        $existingBranchCost = (float) ($branchStock->avg_cost ?? $fallbackCost);
+        $branchTotalQty = $existingBranchQty + $newQty;
+
+        $branchStock->fill([
+            'quantity' => $branchTotalQty,
+            'avg_cost' => $branchTotalQty > 0
+                ? round((($existingBranchQty * $existingBranchCost) + ($newQty * $newCost)) / $branchTotalQty, 2)
+                : $newCost,
+        ])->save();
     }
 }

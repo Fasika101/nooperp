@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\BankAccount;
 use App\Models\BankTransaction;
 use App\Models\Branch;
-use App\Models\BranchProductStock;
 use App\Models\Category;
 use App\Models\Expense;
 use App\Models\Product;
@@ -161,5 +160,75 @@ class ProductCreationServiceTest extends TestCase
         $this->assertDatabaseCount('expenses', 0);
         $this->assertDatabaseCount('bank_transactions', 0);
         $this->assertDatabaseCount('branch_product_stocks', 0);
+    }
+
+    public function test_new_product_initial_stock_can_split_across_branches_with_single_expense(): void
+    {
+        $branchA = Branch::query()->create([
+            'name' => 'Alpha',
+            'code' => 'alpha',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $branchB = Branch::query()->create([
+            'name' => 'Beta',
+            'code' => 'beta',
+            'is_active' => true,
+            'is_default' => false,
+        ]);
+
+        $account = BankAccount::query()->create([
+            'name' => 'HQ Account',
+            'branch_id' => $branchA->id,
+            'currency' => 'ETB',
+            'opening_balance' => 1000,
+            'current_balance' => 1000,
+            'is_default' => true,
+        ]);
+
+        $category = Category::query()->create([
+            'name' => 'Frames',
+        ]);
+
+        $product = app(ProductCreationService::class)->create([
+            'name' => 'Split Frame',
+            'category_id' => $category->id,
+            'original_price' => 120,
+            'cost_price' => 40,
+            'price' => 99,
+            'stock' => 5,
+            'initial_stock_allocations' => [
+                ['branch_id' => $branchA->id, 'quantity' => 2],
+                ['branch_id' => $branchB->id, 'quantity' => 3],
+            ],
+            'initial_stock_bank_account_id' => $account->id,
+            'initial_stock_date' => now()->toDateString(),
+            'initial_stock_vendor' => 'Vendor',
+        ]);
+
+        $product->refresh();
+        $account->refresh();
+
+        $this->assertSame(5, $product->stock);
+        $this->assertSame(800.0, (float) $account->current_balance);
+
+        $this->assertSame(2, StockPurchase::query()->count());
+        $this->assertSame(1, Expense::query()->count());
+
+        $linkedExpenseIds = StockPurchase::query()->pluck('expense_id')->filter()->values()->all();
+        $this->assertCount(1, $linkedExpenseIds);
+        $this->assertSame(200.0, (float) Expense::query()->firstOrFail()->amount);
+
+        $this->assertDatabaseHas('branch_product_stocks', [
+            'branch_id' => $branchA->id,
+            'product_id' => $product->id,
+            'quantity' => 2,
+        ]);
+        $this->assertDatabaseHas('branch_product_stocks', [
+            'branch_id' => $branchB->id,
+            'product_id' => $product->id,
+            'quantity' => 3,
+        ]);
     }
 }
