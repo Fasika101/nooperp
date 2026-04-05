@@ -7,18 +7,21 @@ use App\Models\ProductOption;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Alignment;
 use Filament\Tables;
 use Filament\Tables\Table;
 
 class ProductOptionResource extends Resource
 {
     protected static ?string $model = ProductOption::class;
+
+    /** Flat list under its own URL; primary UI is the Product options cluster. */
+    protected static ?string $slug = 'product-options-legacy';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-swatch';
 
@@ -29,6 +32,11 @@ class ProductOptionResource extends Resource
     protected static ?string $modelLabel = 'Product Option';
 
     protected static ?int $navigationSort = 4;
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -41,11 +49,20 @@ class ProductOptionResource extends Resource
                     ->preload(),
                 TextInput::make('name')
                     ->maxLength(255)
-                    ->required(fn (Get $get): bool => blank(trim((string) ($get('bulk_values') ?? '')))),
-                Textarea::make('bulk_values')
-                    ->label('Add many at once')
-                    ->rows(6)
-                    ->helperText('Optional on create: put one value per line, or separate with commas. Creates one product option per line. Leave empty to use the single Name field above.')
+                    ->required()
+                    ->visibleOn('edit'),
+                Repeater::make('option_values')
+                    ->label('Values')
+                    ->simple(
+                        TextInput::make('value')
+                            ->maxLength(255)
+                            ->placeholder('Enter a value')
+                    )
+                    ->defaultItems(1)
+                    ->addActionLabel('Add another')
+                    ->addActionAlignment(Alignment::Start)
+                    ->reorderable(false)
+                    ->itemHeaders(false)
                     ->columnSpanFull()
                     ->visibleOn('create'),
             ]);

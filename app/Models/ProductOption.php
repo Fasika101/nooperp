@@ -9,10 +9,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ProductOption extends Model
 {
     public const TYPE_SIZE = 'size';
+
     public const TYPE_COLOR = 'color';
+
     public const TYPE_GENDER = 'gender';
+
     public const TYPE_MATERIAL = 'material';
+
     public const TYPE_SHAPE = 'shape';
+
     public const TYPE_BRAND = 'brand';
 
     protected $fillable = [
@@ -43,13 +48,13 @@ class ProductOption extends Model
     }
 
     /**
-     * Split bulk input: newlines and/or commas. Trims, drops empties, preserves order, removes consecutive duplicates.
+     * Trims, drops empties, preserves order, de-duplicates case-insensitively.
      *
+     * @param  array<int, mixed>  $parts
      * @return list<string>
      */
-    public static function parseBulkNames(string $raw): array
+    public static function normalizeNamesFromFragments(array $parts): array
     {
-        $parts = preg_split('/[\r\n,]+/', $raw) ?: [];
         $names = [];
         $seen = [];
 
@@ -67,6 +72,48 @@ class ProductOption extends Model
         }
 
         return $names;
+    }
+
+    /**
+     * Split bulk input: newlines and/or commas, then {@see normalizeNamesFromFragments()}.
+     *
+     * @return list<string>
+     */
+    public static function parseBulkNames(string $raw): array
+    {
+        $parts = preg_split('/[\r\n,]+/', $raw) ?: [];
+
+        return self::normalizeNamesFromFragments($parts);
+    }
+
+    /**
+     * @param  non-empty-list<string>  $names
+     * @return array{created: int, skipped: int, last: self}
+     */
+    public static function firstOrCreateManyForType(string $type, array $names): array
+    {
+        $created = 0;
+        $skipped = 0;
+        $last = null;
+
+        foreach ($names as $name) {
+            $option = self::query()->firstOrCreate([
+                'type' => $type,
+                'name' => $name,
+            ]);
+
+            $last = $option;
+
+            if ($option->wasRecentlyCreated) {
+                $created++;
+            } else {
+                $skipped++;
+            }
+        }
+
+        assert($last instanceof self);
+
+        return ['created' => $created, 'skipped' => $skipped, 'last' => $last];
     }
 
     public function productsAsBrand(): HasMany

@@ -13,81 +13,62 @@ class CreateProductOption extends CreateRecord
 {
     protected static string $resource = ProductOptionResource::class;
 
-
     /**
      * @param  array<string, mixed>  $data
      */
     protected function handleRecordCreation(array $data): Model
     {
-        $bulkRaw = trim((string) ($data['bulk_values'] ?? ''));
-        unset($data['bulk_values']);
+        $type = $data['type'] ?? null;
+        if (! is_string($type) || $type === '') {
+            throw ValidationException::withMessages([
+                'type' => ['Choose a type for these options.'],
+            ]);
+        }
 
-        if ($bulkRaw !== '') {
-            $names = ProductOption::parseBulkNames($bulkRaw);
-            $type = $data['type'] ?? null;
+        $raw = $data['option_values'] ?? [];
+        unset($data['option_values']);
 
-            if (! is_string($type) || $type === '') {
-                throw ValidationException::withMessages([
-                    'type' => ['Choose a type for these options.'],
-                ]);
-            }
+        $names = ProductOption::normalizeNamesFromFragments(is_array($raw) ? $raw : []);
 
-            if ($names === []) {
-                throw ValidationException::withMessages([
-                    'bulk_values' => ['Enter at least one non-empty value.'],
-                ]);
-            }
+        if ($names === []) {
+            throw ValidationException::withMessages([
+                'option_values' => ['Add at least one value, or remove empty rows.'],
+            ]);
+        }
 
-            $created = 0;
-            $skipped = 0;
-            $last = null;
-
-            foreach ($names as $name) {
-                $option = ProductOption::query()->firstOrCreate([
-                    'type' => $type,
-                    'name' => $name,
-                ]);
-
-                $last = $option;
-
-                if ($option->wasRecentlyCreated) {
-                    $created++;
-                } else {
-                    $skipped++;
-                }
-            }
-
+        if (count($names) > 1) {
+            $result = ProductOption::firstOrCreateManyForType($type, $names);
             $label = ProductOption::getTypeOptions()[$type] ?? $type;
 
-            if ($created === 0 && $skipped > 0) {
+            if ($result['created'] === 0 && $result['skipped'] > 0) {
                 Notification::make()
                     ->warning()
                     ->title('No new options added')
-                    ->body("All {$skipped} values already exist for {$label}.")
+                    ->body("All {$result['skipped']} values already exist for {$label}.")
                     ->send();
             } else {
                 Notification::make()
                     ->success()
-                    ->title($created.' '.$label.' option(s) added')
-                    ->body($skipped > 0 ? "{$skipped} already existed and were skipped." : null)
+                    ->title($result['created'].' '.$label.' option(s) added')
+                    ->body($result['skipped'] > 0 ? "{$result['skipped']} already existed and were skipped." : null)
                     ->send();
             }
 
-            assert($last instanceof ProductOption);
-
-            return $last;
+            return $result['last'];
         }
 
         $duplicate = ProductOption::query()
-            ->where('type', $data['type'] ?? '')
-            ->where('name', $data['name'] ?? '')
+            ->where('type', $type)
+            ->where('name', $names[0])
             ->exists();
 
         if ($duplicate) {
             throw ValidationException::withMessages([
-                'name' => ['This value already exists for the selected type.'],
+                'option_values' => ['This value already exists for the selected type.'],
             ]);
         }
+
+        $data['name'] = $names[0];
 
         return parent::handleRecordCreation($data);
     }
