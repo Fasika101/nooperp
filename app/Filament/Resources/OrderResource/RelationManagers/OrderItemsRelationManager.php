@@ -8,6 +8,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\HtmlString;
 
 class OrderItemsRelationManager extends RelationManager
 {
@@ -21,7 +22,7 @@ class OrderItemsRelationManager extends RelationManager
 
         return $table
             ->recordTitleAttribute('id')
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['product.size', 'product.color']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['product.size', 'product.color', 'rxExtraCustomizations']))
             ->columns([
                 Tables\Columns\TextColumn::make('id')
                     ->label('#')
@@ -55,9 +56,18 @@ class OrderItemsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('lens_type_summary')
                     ->label('Lens type')
                     ->placeholder('—'),
+                Tables\Columns\TextColumn::make('rx_extras')
+                    ->label('Extra Rx customizations')
+                    ->placeholder('—')
+                    ->getStateUsing(function (OrderItem $record): ?string {
+                        $names = $record->getExtraCustomizationNamesList();
+
+                        return $names === [] ? null : implode(', ', $names);
+                    })
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('prescription_display')
                     ->label('Prescription')
-                    ->getStateUsing(fn (OrderItem $record) => $record->getPrescriptionAdminHtml() ?? new \Illuminate\Support\HtmlString('<span class="text-gray-500 dark:text-gray-400">—</span>'))
+                    ->getStateUsing(fn (OrderItem $record) => $record->getPrescriptionAdminHtml() ?? new HtmlString('<span class="text-gray-500 dark:text-gray-400">—</span>'))
                     ->html()
                     ->wrap(),
                 Tables\Columns\TextColumn::make('line_subtotal')

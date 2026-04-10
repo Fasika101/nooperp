@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\DataWipePage;
 use App\Filament\Pages\EditProfilePage;
+use App\Filament\Pages\ExpenseReportsPage;
 use App\Filament\Pages\FinancePage;
 use App\Filament\Pages\IntegrationsPage;
 use App\Filament\Pages\LandingPageSettingsPage;
@@ -59,6 +60,8 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make()
                     ->label('CRM'),
                 NavigationGroup::make()
+                    ->label('HR'),
+                NavigationGroup::make()
                     ->label('Projects'),
                 NavigationGroup::make()
                     ->label('Settings'),
@@ -76,6 +79,7 @@ class AdminPanelProvider extends PanelProvider
                 PosPage::class,
                 FinancePage::class,
                 ProfitLossReportPage::class,
+                ExpenseReportsPage::class,
                 SettingsPage::class,
                 LandingPageSettingsPage::class,
                 IntegrationsPage::class,

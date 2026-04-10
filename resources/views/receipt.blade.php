@@ -76,6 +76,10 @@
                                 @if(!empty($m['frame']) && (filled($m['frame']['size_name'] ?? null) || filled($m['frame']['color_name'] ?? null)))
                                     <br>Frame: {{ collect([$m['frame']['size_name'] ?? null, $m['frame']['color_name'] ?? null])->filter()->implode(', ') }}
                                 @endif
+                                @php $rxExtras = $item->getExtraCustomizationNamesList(); @endphp
+                                @if($rxExtras !== [])
+                                    <br>Extras: {{ implode(', ', $rxExtras) }}
+                                @endif
                             </div>
                         @endif
                     </td>

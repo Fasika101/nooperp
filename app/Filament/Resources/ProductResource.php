@@ -12,12 +12,16 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Components\RepeatableEntry;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
@@ -32,6 +36,141 @@ class ProductResource extends Resource
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-cube';
 
     protected static string|\UnitEnum|null $navigationGroup = 'Inventory';
+
+    public static function infolist(Schema $schema): Schema
+    {
+        $currency = Setting::getDefaultCurrency();
+
+        return $schema
+            ->components([
+                Section::make('Product')
+                    ->schema([
+                        ImageEntry::make('image')
+                            ->disk('public')
+                            ->height(220)
+                            ->columnSpanFull()
+                            ->defaultImageUrl('https://ui-avatars.com/api/?name=Product&color=7F9CF5&background=EBF4FF'),
+                        TextEntry::make('name')
+                            ->weight('bold')
+                            ->size('lg'),
+                        TextEntry::make('category.name')
+                            ->label('Category')
+                            ->placeholder('—'),
+                        TextEntry::make('is_service')
+                            ->label('Product type')
+                            ->badge()
+                            ->formatStateUsing(fn (?bool $state): string => $state ? 'Service (non-inventory)' : 'Inventory'),
+                    ])
+                    ->columns(2),
+                Section::make('Attributes')
+                    ->schema([
+                        TextEntry::make('brand.name')
+                            ->label('Brand')
+                            ->placeholder('—')
+                            ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_BRAND)),
+                        TextEntry::make('size_option_id')
+                            ->label('Sizes')
+                            ->formatStateUsing(function (TextEntry $component, $state): string {
+                                $record = $component->getRecord();
+
+                                return $record instanceof Product
+                                    ? self::formatAttachedOptionsLabel($record, ProductOption::TYPE_SIZE)
+                                    : '—';
+                            })
+                            ->placeholder('—')
+                            ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_SIZE)),
+                        TextEntry::make('color_option_id')
+                            ->label('Colors')
+                            ->formatStateUsing(function (TextEntry $component, $state): string {
+                                $record = $component->getRecord();
+
+                                return $record instanceof Product
+                                    ? self::formatAttachedOptionsLabel($record, ProductOption::TYPE_COLOR)
+                                    : '—';
+                            })
+                            ->placeholder('—')
+                            ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_COLOR)),
+                        TextEntry::make('gender.name')
+                            ->label('Gender')
+                            ->placeholder('—')
+                            ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_GENDER)),
+                        TextEntry::make('material.name')
+                            ->label('Material')
+                            ->placeholder('—')
+                            ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_MATERIAL)),
+                        TextEntry::make('shape.name')
+                            ->label('Shape')
+                            ->placeholder('—')
+                            ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_SHAPE)),
+                    ])
+                    ->columns(2)
+                    ->collapsed(false),
+                Section::make('Frame size')
+                    ->description('Eyeglass measurements (mm).')
+                    ->schema([
+                        TextEntry::make('lens_width_mm')
+                            ->label('Lens width')
+                            ->suffix(' mm')
+                            ->placeholder('—'),
+                        TextEntry::make('bridge_width_mm')
+                            ->label('Bridge width')
+                            ->suffix(' mm')
+                            ->placeholder('—'),
+                        TextEntry::make('temple_length_mm')
+                            ->label('Temple length')
+                            ->suffix(' mm')
+                            ->placeholder('—'),
+                    ])
+                    ->columns(3),
+                Section::make('Pricing & stock')
+                    ->schema([
+                        TextEntry::make('original_price')
+                            ->label('List / original price')
+                            ->money($currency)
+                            ->placeholder('—'),
+                        TextEntry::make('cost_price')
+                            ->label('Cost price')
+                            ->money($currency)
+                            ->placeholder('—'),
+                        TextEntry::make('price')
+                            ->label('Sale price')
+                            ->money($currency),
+                        TextEntry::make('stock')
+                            ->label('Total stock')
+                            ->badge()
+                            ->color(fn (int $state): string => match (true) {
+                                $state <= 0 => 'danger',
+                                $state <= 10 => 'warning',
+                                default => 'success',
+                            }),
+                        RepeatableEntry::make('branchStocks')
+                            ->label('By branch')
+                            ->schema([
+                                TextEntry::make('branch.name')
+                                    ->label('Branch'),
+                                TextEntry::make('quantity')
+                                    ->label('Qty'),
+                                TextEntry::make('avg_cost')
+                                    ->label('Avg cost')
+                                    ->money($currency)
+                                    ->placeholder('—'),
+                            ])
+                            ->columns(3),
+                    ])
+                    ->columns(2),
+                Section::make('Record')
+                    ->schema([
+                        TextEntry::make('created_at')
+                            ->dateTime()
+                            ->placeholder('—'),
+                        TextEntry::make('updated_at')
+                            ->dateTime()
+                            ->placeholder('—'),
+                    ])
+                    ->columns(2)
+                    ->collapsed(),
+            ]);
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -223,7 +362,8 @@ class ProductResource extends Resource
                     ->defaultImageUrl(fn ($record) => 'https://ui-avatars.com/api/?name='.urlencode($record->name).'&color=7F9CF5&background=EBF4FF'),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->url(fn (Product $record): string => static::getUrl('view', ['record' => $record])),
                 Tables\Columns\TextColumn::make('category.name')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('brand.name')
@@ -335,6 +475,7 @@ class ProductResource extends Resource
                     ->hidden(fn (): bool => ! Setting::isProductOptionFieldEnabled(ProductOption::TYPE_SHAPE)),
             ])
             ->actions([
+                ViewAction::make(),
                 Action::make('restock')
                     ->label('Restock')
                     ->icon('heroicon-o-arrow-path')
@@ -361,7 +502,31 @@ class ProductResource extends Resource
         return [
             'index' => Pages\ListProducts::route('/'),
             'create' => Pages\CreateProduct::route('/create'),
+            'view' => Pages\ViewProduct::route('/{record}'),
             'edit' => Pages\EditProduct::route('/{record}/edit'),
         ];
+    }
+
+    protected static function formatAttachedOptionsLabel(Product $record, string $type): string
+    {
+        $record->loadMissing('attachedProductOptions');
+
+        $fromPivot = $record->attachedProductOptions
+            ->where('type', $type)
+            ->pluck('name')
+            ->sort()
+            ->values();
+
+        if ($fromPivot->isNotEmpty()) {
+            return $fromPivot->implode(', ');
+        }
+
+        $fallback = match ($type) {
+            ProductOption::TYPE_SIZE => $record->size?->name,
+            ProductOption::TYPE_COLOR => $record->color?->name,
+            default => null,
+        };
+
+        return $fallback !== null && $fallback !== '' ? (string) $fallback : '—';
     }
 }

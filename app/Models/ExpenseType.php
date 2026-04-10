@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ExpenseType extends Model
 {
+    public const NAME_SALARIES = 'Salaries';
+
     protected $fillable = [
         'name',
         'is_active',
@@ -36,5 +38,10 @@ class ExpenseType extends Model
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    public static function salariesTypeId(): ?int
+    {
+        return once(fn (): ?int => static::query()->where('name', self::NAME_SALARIES)->value('id'));
     }
 }

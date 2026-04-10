@@ -448,7 +448,8 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                 </div>
 
                                 <div class="pos-opt-section">
-                                    <h4>Lens type remarks</h4>
+                                    <h4>Lens package &amp; price</h4>
+                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Select one priced option (required).</p>
                                     <div class="pos-remark-grid">
                                         @foreach($this->getOpticalPrescriptionRemarks() as $remark)
                                             @php
@@ -463,6 +464,21 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                     @if($this->getOpticalPrescriptionRemarks()->isEmpty())
                                         <p style="font-size: 0.875rem; color: rgb(107 114 128);">Add remark options under Optical → Lens remarks (Rx).</p>
                                     @endif
+                                </div>
+
+                                <div class="pos-opt-section">
+                                    <h4>Extra customizations</h4>
+                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Optional add-ons for the lab (coatings, materials, etc.). <strong>No extra charge</strong> on this line — they are recorded on the order only.</p>
+                                    <div class="pos-remark-grid">
+                                        @forelse($this->getOpticalRxLensTypes() as $lensType)
+                                            <label class="pos-remark-item {{ in_array((int) $lensType->id, $opticalLensTypeIds ?? [], true) ? 'selected' : '' }}">
+                                                <input type="checkbox" wire:model.live="opticalLensTypeIds" value="{{ $lensType->id }}" style="accent-color: var(--primary-600);" />
+                                                <span><strong>{{ $lensType->name }}</strong></span>
+                                            </label>
+                                        @empty
+                                            <p style="font-size: 0.875rem; color: rgb(107 114 128); grid-column: 1 / -1;">Add options under Optical → Extra customizations (Rx).</p>
+                                        @endforelse
+                                    </div>
                                 </div>
 
                                 <div class="pos-customize-footer">

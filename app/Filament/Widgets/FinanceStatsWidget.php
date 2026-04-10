@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Widgets\Concerns\ChecksShieldWidgetPermission;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\Order;
@@ -14,10 +15,18 @@ use Illuminate\Support\Number;
 
 class FinanceStatsWidget extends BaseWidget
 {
+    use ChecksShieldWidgetPermission;
     use HasWidgetShield;
+
     protected static ?int $sort = 1;
 
-    protected int | array | null $columns = 4;
+    protected int|array|null $columns = 4;
+
+    public static function canView(): bool
+    {
+        return static::hasWidgetPermission()
+            && request()->routeIs('filament.admin.pages.finance-page');
+    }
 
     protected function getStats(): array
     {
@@ -81,6 +90,20 @@ class FinanceStatsWidget extends BaseWidget
             ->whereYear('created_at', $now->year)
             ->sum('shipping_amount');
 
+        $salariesTypeId = ExpenseType::salariesTypeId();
+        $inventoryPurchasesThisMonth = $inventoryPurchaseTypeId
+            ? (float) Expense::where('expense_type_id', $inventoryPurchaseTypeId)
+                ->whereMonth('date', $now->month)
+                ->whereYear('date', $now->year)
+                ->sum('amount')
+            : 0.0;
+        $salariesThisMonth = $salariesTypeId
+            ? (float) Expense::where('expense_type_id', $salariesTypeId)
+                ->whereMonth('date', $now->month)
+                ->whereYear('date', $now->year)
+                ->sum('amount')
+            : 0.0;
+
         return [
             Stat::make('Revenue This Month', Number::currency($revenueThisMonth, $currency))
                 ->description($revenueChange >= 0 ? "+{$revenueChange}% vs last month" : "{$revenueChange}% vs last month")
@@ -104,8 +127,18 @@ class FinanceStatsWidget extends BaseWidget
                 ->descriptionIcon('heroicon-m-truck')
                 ->color('gray')
                 ->icon('heroicon-o-truck'),
+            Stat::make('Inventory purchases (cash)', Number::currency($inventoryPurchasesThisMonth, $currency))
+                ->description('Expense type: Inventory Purchase')
+                ->descriptionIcon('heroicon-m-shopping-cart')
+                ->color('gray')
+                ->icon('heroicon-o-shopping-cart'),
+            Stat::make('Payroll this month', Number::currency($salariesThisMonth, $currency))
+                ->description('Expense type: Salaries')
+                ->descriptionIcon('heroicon-m-users')
+                ->color('gray')
+                ->icon('heroicon-o-users'),
             Stat::make('Total Expenses This Month', Number::currency($allExpensesThisMonth, $currency))
-                ->description('Rent, restock, utilities, etc. ' . ($allExpensesChange >= 0 ? "+{$allExpensesChange}% vs last month" : "{$allExpensesChange}% vs last month"))
+                ->description('Rent, restock, utilities, etc. '.($allExpensesChange >= 0 ? "+{$allExpensesChange}% vs last month" : "{$allExpensesChange}% vs last month"))
                 ->descriptionIcon($allExpensesChange >= 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down')
                 ->descriptionColor($allExpensesChange >= 0 ? 'danger' : 'success')
                 ->color('danger')

@@ -184,7 +184,7 @@ class RolesSeeder extends Seeder
      */
     protected function financePermissionNames(): array
     {
-        $resources = ['BankAccount', 'BankTransaction', 'Expense', 'ExpenseType', 'TaxType'];
+        $resources = ['BankAccount', 'BankTransaction', 'Expense', 'ExpenseType', 'TaxType', 'SalaryTaxBracket'];
         $actions = ['ViewAny', 'View', 'Create', 'Update', 'Delete', 'Restore', 'ForceDelete', 'Replicate', 'Reorder', 'RestoreAny', 'ForceDeleteAny'];
 
         $perms = $this->matrixPermissions($resources, $actions);
@@ -193,11 +193,14 @@ class RolesSeeder extends Seeder
             'View:Dashboard',
             'View:FinancePage',
             'View:ProfitLossReportPage',
+            'View:ExpenseReportsPage',
             'View:SettingsPage',
             'View:FinanceStatsWidget',
             'View:BankAccountOverviewWidget',
             'View:BankAccountReconciliationWidget',
             'View:RecurringExpensesDueWidget',
+            'View:FinanceExpenseMixChartWidget',
+            'View:FinanceRevenueExpensesTrendWidget',
             'View:LibaStatsOverviewWidget',
             'View:RevenueChartWidget',
         ]);

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Widgets\Concerns\ChecksShieldWidgetPermission;
 use App\Models\BankAccount;
 use App\Models\Setting;
 use BezhanSalleh\FilamentShield\Traits\HasWidgetShield;
@@ -11,23 +12,17 @@ use Illuminate\Support\Number;
 
 class BankAccountOverviewWidget extends BaseWidget
 {
+    use ChecksShieldWidgetPermission;
     use HasWidgetShield;
 
     protected static ?int $sort = 0;
 
-    protected int | array | null $columns = 2;
+    protected int|array|null $columns = 2;
 
     public static function canView(): bool
     {
-        return static::hasWidgetPermission() && ! request()->routeIs('filament.admin.pages.dashboard');
-    }
-
-    protected static function hasWidgetPermission(): bool
-    {
-        $permission = static::getWidgetPermission();
-        $user = \Filament\Facades\Filament::auth()?->user();
-
-        return $permission && $user ? $user->can($permission) : true;
+        return static::hasWidgetPermission()
+            && request()->routeIs('filament.admin.pages.finance-page');
     }
 
     protected function getStats(): array

@@ -13,6 +13,7 @@ class Expense extends Model
         'expense_type_id',
         'bank_account_id',
         'branch_id',
+        'employee_id',
         'vendor',
         'description',
     ];
@@ -38,5 +39,10 @@ class Expense extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
     }
 }

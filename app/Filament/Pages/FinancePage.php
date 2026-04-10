@@ -3,6 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Widgets\BankAccountOverviewWidget;
+use App\Filament\Widgets\FinanceExpenseMixChartWidget;
+use App\Filament\Widgets\FinanceRevenueExpensesTrendWidget;
 use App\Filament\Widgets\FinanceStatsWidget;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Pages\Page;
@@ -15,9 +17,9 @@ class FinancePage extends Page
 
     protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
-    protected static ?string $navigationLabel = 'Finance Overview';
+    protected static ?string $navigationLabel = 'Finance dashboard';
 
-    protected static ?string $title = 'Finance';
+    protected static ?string $title = 'Finance dashboard';
 
     protected static ?int $navigationSort = 0;
 
@@ -27,5 +29,18 @@ class FinancePage extends Page
             BankAccountOverviewWidget::class,
             FinanceStatsWidget::class,
         ];
+    }
+
+    protected function getFooterWidgets(): array
+    {
+        return [
+            FinanceRevenueExpensesTrendWidget::class,
+            FinanceExpenseMixChartWidget::class,
+        ];
+    }
+
+    public function getFooterWidgetsColumns(): int|array
+    {
+        return 2;
     }
 }

@@ -8,8 +8,10 @@ use App\Models\Category;
 use App\Models\Customer;
 use App\Models\OpticalLensNoPrescription;
 use App\Models\OpticalLensPrescriptionRemark;
+use App\Models\OpticalLensRxLensType;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemRxExtra;
 use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\Product;
@@ -110,6 +112,9 @@ class PosPage extends Page
     public string $pd_left = '';
 
     public ?int $opticalRemarkId = null;
+
+    /** Selected lens type remark IDs (multi-select, Rx flow) */
+    public array $opticalLensTypeIds = [];
 
     /** @var int|null Opened when a product has more than one size or color */
     public ?int $variantModalProductId = null;
@@ -429,7 +434,11 @@ class PosPage extends Page
 
     protected function frameMetaForOpticalLine(): array
     {
+        $ctx = $this->getLastNonOpticalCartContext();
+        $productId = $ctx ? ($ctx['item']['product_id'] ?? null) : null;
+
         return [
+            'product_id' => $productId !== null ? (int) $productId : null,
             'size_option_id' => $this->lensFrameSizeOptionId,
             'size_name' => $this->lensFrameSizeOptionId
                 ? (string) ProductOption::query()->whereKey($this->lensFrameSizeOptionId)->value('name')
@@ -439,6 +448,63 @@ class PosPage extends Page
                 ? (string) ProductOption::query()->whereKey($this->lensFrameColorOptionId)->value('name')
                 : null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $frameA
+     * @param  array<string, mixed>  $frameB
+     */
+    protected function opticalFrameMetaMatches(array $frameA, array $frameB): bool
+    {
+        $nid = fn (mixed $v): ?int => $v === null || $v === '' ? null : (int) $v;
+
+        return $nid($frameA['product_id'] ?? null) === $nid($frameB['product_id'] ?? null)
+            && $nid($frameA['size_option_id'] ?? null) === $nid($frameB['size_option_id'] ?? null)
+            && $nid($frameA['color_option_id'] ?? null) === $nid($frameB['color_option_id'] ?? null);
+    }
+
+    /**
+     * Drop no-prescription lens lines that target the same frame product + variant as $targetFrameMeta.
+     *
+     * @param  array<string, mixed>  $targetFrameMeta
+     */
+    protected function removeNoPrescriptionOpticalLinesForFrame(array $targetFrameMeta): int
+    {
+        $before = count($this->cart);
+        $this->cart = array_values(array_filter($this->cart, function (array $item) use ($targetFrameMeta): bool {
+            if (empty($item['is_optical'])) {
+                return true;
+            }
+            $meta = $item['optical_meta'] ?? [];
+            if (($meta['route'] ?? '') !== 'no_prescription') {
+                return true;
+            }
+
+            return ! $this->opticalFrameMetaMatches($meta['frame'] ?? [], $targetFrameMeta);
+        }));
+
+        return $before - count($this->cart);
+    }
+
+    /**
+     * @param  array<string, mixed>  $opticalMeta
+     */
+    protected function persistOrderItemRxExtras(OrderItem $orderItem, array $opticalMeta): void
+    {
+        foreach ($opticalMeta['lens_type_remarks'] ?? [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = trim((string) ($row['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            OrderItemRxExtra::query()->create([
+                'order_item_id' => $orderItem->id,
+                'optical_lens_rx_lens_type_id' => isset($row['id']) ? (int) $row['id'] : null,
+                'name' => $name,
+            ]);
+        }
     }
 
     public function removeFromCart(int $index): void
@@ -787,7 +853,7 @@ class PosPage extends Page
                         $branchStock->decrement('quantity', $item['quantity']);
                     }
 
-                    OrderItem::create([
+                    $orderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $item['product_id'],
                         'size_option_id' => $item['size_option_id'] ?? null,
@@ -798,6 +864,10 @@ class PosPage extends Page
                         'unit_cost' => $item['unit_cost'] ?? null,
                         'optical_meta' => $item['optical_meta'] ?? null,
                     ]);
+
+                    if (! empty($item['is_optical'])) {
+                        $this->persistOrderItemRxExtras($orderItem, $item['optical_meta'] ?? []);
+                    }
                 }
 
                 Payment::create([
@@ -884,6 +954,7 @@ class PosPage extends Page
         $this->opticalFlow = null;
         $this->opticalVision = null;
         $this->opticalRemarkId = null;
+        $this->opticalLensTypeIds = [];
         $this->pd_mode = null;
         $this->pd_single = '';
         $this->pd_right = '';
@@ -903,6 +974,7 @@ class PosPage extends Page
         $this->opticalFlow = 'no_rx';
         $this->opticalVision = null;
         $this->opticalRemarkId = null;
+        $this->opticalLensTypeIds = [];
     }
 
     public function selectOpticalFlowWithRx(): void
@@ -910,6 +982,7 @@ class PosPage extends Page
         $this->opticalFlow = 'with_rx';
         $this->opticalVision = null;
         $this->opticalRemarkId = null;
+        $this->opticalLensTypeIds = [];
         $this->resetPrescriptionFields();
     }
 
@@ -922,6 +995,7 @@ class PosPage extends Page
     {
         $this->opticalVision = null;
         $this->opticalRemarkId = null;
+        $this->opticalLensTypeIds = [];
         $this->resetPrescriptionFields();
     }
 
@@ -932,6 +1006,7 @@ class PosPage extends Page
         }
         $this->opticalVision = $vision;
         $this->opticalRemarkId = null;
+        $this->opticalLensTypeIds = [];
         $this->resetPrescriptionFields();
     }
 
@@ -949,6 +1024,16 @@ class PosPage extends Page
         $this->pd_single = '';
         $this->pd_right = '';
         $this->pd_left = '';
+        $this->opticalLensTypeIds = [];
+    }
+
+    public function getOpticalRxLensTypes()
+    {
+        return OpticalLensRxLensType::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
     }
 
     public function getOpticalNoPrescriptionLenses()
@@ -1096,7 +1181,7 @@ class PosPage extends Page
             Notification::make()
                 ->warning()
                 ->title('Select a lens type')
-                ->body('Choose one option under Lens type remarks.')
+                ->body('Choose one option under Lens package & price.')
                 ->send();
 
             return;
@@ -1105,11 +1190,29 @@ class PosPage extends Page
         $price = $remark->priceForVision($this->opticalVision);
         $visionLabel = $this->opticalVision === 'progressive' ? 'Progressive' : 'Single vision';
 
+        $frameMeta = $this->frameMetaForOpticalLine();
+        $removedNoRx = $this->removeNoPrescriptionOpticalLinesForFrame($frameMeta);
+
+        $lensTypeIds = array_values(array_unique(array_filter(array_map(
+            static fn ($id): int => (int) $id,
+            $this->opticalLensTypeIds ?? []
+        ))));
+        $lensTypeRemarks = $lensTypeIds === [] ? [] : OpticalLensRxLensType::query()
+            ->where('is_active', true)
+            ->whereIn('id', $lensTypeIds)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (OpticalLensRxLensType $t) => ['id' => $t->id, 'name' => $t->name])
+            ->values()
+            ->all();
+
         $opticalMeta = [
             'route' => 'prescription',
             'vision' => $this->opticalVision,
             'lens_name' => $remark->name,
             'remark_id' => $remark->id,
+            'lens_type_remarks' => $lensTypeRemarks,
             'od' => [
                 'sph' => $this->od_sph,
                 'cyl' => $this->od_cyl,
@@ -1128,17 +1231,20 @@ class PosPage extends Page
                 'right' => $this->pd_right !== '' ? $this->pd_right : null,
                 'left' => $this->pd_left !== '' ? $this->pd_left : null,
             ],
-            'frame' => $this->frameMetaForOpticalLine(),
+            'frame' => $frameMeta,
         ];
 
         $lineLabel = 'Lens (Rx, '.$visionLabel.'): '.$remark->name;
 
         $this->appendOpticalCartLine($lineLabel, $price, $opticalMeta);
 
-        Notification::make()
+        $notification = Notification::make()
             ->success()
-            ->title('Prescription lens added to cart')
-            ->send();
+            ->title('Prescription lens added to cart');
+        if ($removedNoRx > 0) {
+            $notification->body('Removed the no-prescription lens for this frame.');
+        }
+        $notification->send();
     }
 
     public function setPdMode(?string $mode): void

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\HtmlString;
 
 class OrderItem extends Model
@@ -71,6 +72,32 @@ class OrderItem extends Model
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * @return HasMany<OrderItemRxExtra, $this>
+     */
+    public function rxExtraCustomizations(): HasMany
+    {
+        return $this->hasMany(OrderItemRxExtra::class);
+    }
+
+    /**
+     * Extra Rx customization labels: prefer persisted rows, else JSON snapshot on optical_meta.
+     *
+     * @return list<string>
+     */
+    public function getExtraCustomizationNamesList(): array
+    {
+        if ($this->relationLoaded('rxExtraCustomizations') && $this->rxExtraCustomizations->isNotEmpty()) {
+            return $this->rxExtraCustomizations->pluck('name')->filter()->values()->all();
+        }
+
+        return collect($this->optical_meta['lens_type_remarks'] ?? [])
+            ->pluck('name')
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     public function hasOpticalDetails(): bool
     {
         return is_array($this->optical_meta) && $this->optical_meta !== [];
@@ -88,7 +115,7 @@ class OrderItem extends Model
 
         return match ($m['route'] ?? '') {
             'no_prescription' => (string) ($m['lens_name'] ?? '—'),
-            'prescription' => (string) ($m['lens_name'] ?? '—'),
+            'prescription' => $this->formatPrescriptionLensSummary(),
             default => '—',
         };
     }
@@ -121,26 +148,41 @@ class OrderItem extends Model
         $pdHtml = '';
         if (! empty($pd['mode'])) {
             if (($pd['mode'] ?? '') === 'one' && filled($pd['single'] ?? null)) {
-                $pdHtml = '<div class="mt-2 text-sm"><strong>PD</strong> ' . e((string) $pd['single']) . ' mm</div>';
+                $pdHtml = '<div class="mt-2 text-sm"><strong>PD</strong> '.e((string) $pd['single']).' mm</div>';
             } elseif (($pd['mode'] ?? '') === 'two') {
-                $pdHtml = '<div class="mt-2 text-sm"><strong>PD</strong> OD ' . e((string) ($pd['right'] ?? '—')) . ' / OS ' . e((string) ($pd['left'] ?? '—')) . '</div>';
+                $pdHtml = '<div class="mt-2 text-sm"><strong>PD</strong> OD '.e((string) ($pd['right'] ?? '—')).' / OS '.e((string) ($pd['left'] ?? '—')).'</div>';
             }
         }
 
         $html = '<div class="prescription-admin space-y-1 text-gray-900 dark:text-gray-100">';
-        $html .= '<div class="text-xs font-bold uppercase tracking-wide text-primary-600 dark:text-primary-400">' . e($title) . '</div>';
+        $html .= '<div class="text-xs font-bold uppercase tracking-wide text-primary-600 dark:text-primary-400">'.e($title).'</div>';
         $html .= '<ul class="list-none space-y-1 pl-0 text-sm leading-relaxed">';
-        $html .= '<li><span class="font-medium">' . e($right['label']) . '</span> ' . $right['body'] . '</li>';
-        $html .= '<li><span class="font-medium">' . e($left['label']) . '</span> ' . $left['body'] . '</li>';
+        $html .= '<li><span class="font-medium">'.e($right['label']).'</span> '.$right['body'].'</li>';
+        $html .= '<li><span class="font-medium">'.e($left['label']).'</span> '.$left['body'].'</li>';
         $html .= '</ul>';
         $html .= $pdHtml;
         $frame = $m['frame'] ?? null;
         if (is_array($frame) && (filled($frame['size_name'] ?? null) || filled($frame['color_name'] ?? null))) {
-            $html .= '<div class="mt-2 text-sm"><strong>Frame</strong> ' . e(collect([$frame['size_name'] ?? null, $frame['color_name'] ?? null])->filter()->implode(', ')) . '</div>';
+            $html .= '<div class="mt-2 text-sm"><strong>Frame</strong> '.e(collect([$frame['size_name'] ?? null, $frame['color_name'] ?? null])->filter()->implode(', ')).'</div>';
         }
+
+        $typeNames = implode(', ', $this->getExtraCustomizationNamesList());
+        if ($typeNames !== '') {
+            $html .= '<div class="mt-2 text-sm"><strong>Extra customizations</strong> '.e($typeNames).'</div>';
+        }
+
         $html .= '</div>';
 
         return new HtmlString($html);
+    }
+
+    protected function formatPrescriptionLensSummary(): string
+    {
+        $m = $this->optical_meta ?? [];
+        $base = (string) ($m['lens_name'] ?? '—');
+        $extras = implode(', ', $this->getExtraCustomizationNamesList());
+
+        return $extras !== '' ? $base.' — '.$extras : $base;
     }
 
     /**
@@ -149,16 +191,16 @@ class OrderItem extends Model
     protected function formatRxEyeLine(string $label, array $eye, bool $includeAdd): array
     {
         $parts = [
-            'Sph ' . e((string) ($eye['sph'] ?? '—')),
-            'Cyl ' . e((string) ($eye['cyl'] ?? '—')),
-            'Axis ' . e((string) ($eye['axis'] ?? '—')),
+            'Sph '.e((string) ($eye['sph'] ?? '—')),
+            'Cyl '.e((string) ($eye['cyl'] ?? '—')),
+            'Axis '.e((string) ($eye['axis'] ?? '—')),
         ];
         if ($includeAdd) {
-            $parts[] = 'Add ' . e((string) ($eye['add'] ?? '—'));
+            $parts[] = 'Add '.e((string) ($eye['add'] ?? '—'));
         }
 
         return [
-            'label' => $label . ':',
+            'label' => $label.':',
             'body' => implode(', ', $parts),
         ];
     }
