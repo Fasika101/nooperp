@@ -12,6 +12,15 @@ class EditBankAccount extends EditRecord
 
     protected function afterSave(): void
     {
+        $record = $this->getRecord();
+        if ($record->is_global) {
+            $record->branches()->detach();
+            $record->branch_id = null;
+        } else {
+            $record->branch_id = $record->branches()->orderBy('branches.id')->first()?->id;
+        }
+        $record->saveQuietly();
+
         $this->ensureSingleDefaultAccount();
     }
 

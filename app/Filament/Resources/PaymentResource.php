@@ -52,7 +52,7 @@ class PaymentResource extends Resource
                 Select::make('payment_type_id')
                     ->relationship('paymentType', 'name', fn ($query) => $query
                         ->where('is_active', true)
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
                         ->orderBy('name'))
                     ->required()
                     ->searchable()

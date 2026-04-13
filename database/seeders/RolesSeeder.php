@@ -144,6 +144,7 @@ class RolesSeeder extends Seeder
             'View:LibaStatsOverviewWidget',
             'View:RevenueChartWidget',
             'View:SalesChartWidget',
+            'View:AccountsReceivablePage',
         ]);
     }
 
@@ -194,6 +195,7 @@ class RolesSeeder extends Seeder
             'View:FinancePage',
             'View:ProfitLossReportPage',
             'View:ExpenseReportsPage',
+            'View:AccountsReceivablePage',
             'View:SettingsPage',
             'View:FinanceStatsWidget',
             'View:BankAccountOverviewWidget',

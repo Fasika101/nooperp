@@ -37,11 +37,11 @@ class BankTransactionService
 
         return BankTransaction::query()->create([
             'bank_account_id' => $account->id,
-            'branch_id' => $payment->branch_id ?: $account->branch_id,
+            'branch_id' => $payment->branch_id ?? $payment->order?->branch_id ?? $account->getSingleBranchIdForFallback(),
             'date' => $payment->order?->created_at?->toDateString() ?? now()->toDateString(),
             'type' => BankTransaction::TYPE_DEPOSIT,
             'amount' => $amount,
-            'description' => 'Sale #' . $payment->order_id . ' - ' . ($payment->order?->customer?->name ?? 'Walk-in'),
+            'description' => 'Sale #'.$payment->order_id.' - '.($payment->order?->customer?->name ?? 'Walk-in'),
             'reference_type' => Payment::class,
             'reference_id' => $payment->id,
         ]);
@@ -59,10 +59,14 @@ class BankTransactionService
 
         $date = $attributes['date'] ?? now()->toDateString();
         $description = trim((string) ($attributes['description'] ?? ''));
+        $branchId = $attributes['branch_id'] ?? null;
+        if ($branchId === null) {
+            $branchId = $sourceAccount->getSingleBranchIdForFallback() ?? $destinationAccount->getSingleBranchIdForFallback();
+        }
 
         $withdrawal = BankTransaction::query()->create([
             'bank_account_id' => $sourceAccount->id,
-            'branch_id' => $sourceAccount->branch_id,
+            'branch_id' => $branchId,
             'date' => $date,
             'type' => BankTransaction::TYPE_WITHDRAWAL,
             'amount' => $amount,
@@ -73,7 +77,7 @@ class BankTransactionService
 
         $deposit = BankTransaction::query()->create([
             'bank_account_id' => $destinationAccount->id,
-            'branch_id' => $destinationAccount->branch_id,
+            'branch_id' => $branchId,
             'date' => $date,
             'type' => BankTransaction::TYPE_DEPOSIT,
             'amount' => $amount,

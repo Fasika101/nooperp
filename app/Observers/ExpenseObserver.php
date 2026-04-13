@@ -43,9 +43,9 @@ class ExpenseObserver
             return;
         }
 
-        if ($expense->branch_id && $account->branch_id && (int) $expense->branch_id !== (int) $account->branch_id) {
+        if ($expense->branch_id && ! $account->isUsableAtBranch((int) $expense->branch_id)) {
             throw ValidationException::withMessages([
-                'bank_account_id' => "The selected account belongs to {$account->branch?->name}, not the chosen branch.",
+                'bank_account_id' => 'The selected account is not available for the chosen branch.',
             ]);
         }
 
@@ -63,7 +63,6 @@ class ExpenseObserver
         }
 
         $expense->bank_account_id = $account->id;
-        $expense->branch_id = $account->branch_id;
     }
 
     protected function syncWithdrawalTransaction(Expense $expense): void
@@ -82,11 +81,11 @@ class ExpenseObserver
 
         $attributes = [
             'bank_account_id' => $account->id,
-            'branch_id' => $expense->branch_id ?: $account->branch_id,
+            'branch_id' => $expense->branch_id ?? $account->getSingleBranchIdForFallback(),
             'date' => $expense->date->toDateString(),
             'type' => BankTransaction::TYPE_WITHDRAWAL,
             'amount' => $amount,
-            'description' => ($expense->expenseType?->name ?? 'Expense') . ($expense->vendor ? " - {$expense->vendor}" : ''),
+            'description' => ($expense->expenseType?->name ?? 'Expense').($expense->vendor ? " - {$expense->vendor}" : ''),
             'reference_type' => Expense::class,
             'reference_id' => $expense->id,
         ];

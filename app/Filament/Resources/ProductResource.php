@@ -312,7 +312,7 @@ class ProductResource extends Resource
                 Select::make('initial_stock_bank_account_id')
                     ->label('Pay Initial Stock From')
                     ->options(fn () => BankAccount::query()
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
                         ->orderByDesc('is_default')
                         ->orderBy('name')
                         ->pluck('name', 'id'))

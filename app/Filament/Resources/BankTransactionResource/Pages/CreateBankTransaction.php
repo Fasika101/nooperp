@@ -6,8 +6,8 @@ use App\Filament\Resources\BankTransactionResource;
 use App\Models\BankAccount;
 use App\Models\BankTransaction;
 use App\Services\BankTransactionService;
-use Illuminate\Database\Eloquent\Model;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
 
 class CreateBankTransaction extends CreateRecord
 {
@@ -31,6 +31,7 @@ class CreateBankTransaction extends CreateRecord
             [
                 'date' => $data['date'],
                 'description' => $data['description'] ?? null,
+                'branch_id' => $data['branch_id'] ?? null,
             ],
         );
     }

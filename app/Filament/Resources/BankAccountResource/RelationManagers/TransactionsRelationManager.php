@@ -3,14 +3,15 @@
 namespace App\Filament\Resources\BankAccountResource\RelationManagers;
 
 use App\Models\BankTransaction;
+use App\Models\Branch;
 use App\Models\Setting;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -28,6 +29,15 @@ class TransactionsRelationManager extends RelationManager
 
         return $schema
             ->components([
+                Select::make('branch_id')
+                    ->label('Branch')
+                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
+                    ->required()
+                    ->searchable()
+                    ->preload()
+                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
+                    ->disabled(fn (): bool => auth()->user()?->isBranchRestricted() ?? false)
+                    ->dehydrated(),
                 DatePicker::make('date')
                     ->required()
                     ->default(now()),
@@ -55,6 +65,9 @@ class TransactionsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('id')
             ->columns([
+                Tables\Columns\TextColumn::make('branch.name')
+                    ->label('Branch')
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('date')
                     ->date()
                     ->sortable(),
@@ -76,7 +89,7 @@ class TransactionsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('reference_type')
                     ->label('Linked')
                     ->formatStateUsing(fn ($state, BankTransaction $record) => $record->reference
-                        ? class_basename($record->reference_type) . ' #' . $record->reference_id
+                        ? class_basename($record->reference_type).' #'.$record->reference_id
                         : '—')
                     ->placeholder('—'),
             ])

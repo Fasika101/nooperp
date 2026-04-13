@@ -5,13 +5,14 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\BankTransactionResource\Pages;
 use App\Models\BankAccount;
 use App\Models\BankTransaction;
+use App\Models\Branch;
 use App\Models\Setting;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
@@ -39,9 +40,18 @@ class BankTransactionResource extends Resource
 
         return $schema
             ->components([
+                Select::make('branch_id')
+                    ->label('Branch')
+                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
+                    ->required()
+                    ->searchable()
+                    ->preload()
+                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
+                    ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false)
+                    ->dehydrated(),
                 Select::make('bank_account_id')
                     ->relationship('bankAccount', 'name', fn ($query) => $query
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
                         ->orderBy('name'))
                     ->required()
                     ->searchable()
@@ -60,7 +70,7 @@ class BankTransactionResource extends Resource
                 Select::make('destination_bank_account_id')
                     ->label('Destination Account')
                     ->options(fn () => BankAccount::query()
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
                         ->orderBy('name')
                         ->pluck('name', 'id'))
                     ->searchable()
@@ -88,6 +98,10 @@ class BankTransactionResource extends Resource
                 Tables\Columns\TextColumn::make('date')
                     ->date()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('branch.name')
+                    ->label('Branch')
+                    ->placeholder('—')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('bankAccount.name')
                     ->label('Account')
                     ->sortable(),
@@ -110,7 +124,7 @@ class BankTransactionResource extends Resource
                 Tables\Columns\TextColumn::make('reference_type')
                     ->label('Linked to')
                     ->formatStateUsing(fn ($state, BankTransaction $record) => $record->reference
-                        ? (class_basename($record->reference_type) . ' #' . $record->reference_id)
+                        ? (class_basename($record->reference_type).' #'.$record->reference_id)
                         : '—')
                     ->placeholder('—'),
             ])

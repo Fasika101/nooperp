@@ -5,13 +5,15 @@ namespace App\Filament\Resources;
 use App\Filament\Exports\CustomerExporter;
 use App\Filament\Resources\CustomerResource\Pages;
 use App\Models\Customer;
+use App\Models\Setting;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
 use Filament\Actions\Exports\Enums\ExportFormat;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -44,6 +46,17 @@ class CustomerResource extends Resource
                     ->label('TIN')
                     ->maxLength(255)
                     ->placeholder('Tax identification number'),
+                TextInput::make('credit_limit')
+                    ->label('Credit limit')
+                    ->numeric()
+                    ->minValue(0)
+                    ->nullable()
+                    ->suffix(fn () => Setting::getDefaultCurrency())
+                    ->helperText('Maximum total outstanding on account sales. Leave empty for no limit.')
+                    ->placeholder('—'),
+                Toggle::make('credit_blocked')
+                    ->label('Block credit sales')
+                    ->helperText('When enabled, POS will not allow on-account sales for this customer.'),
                 TextInput::make('telegram_peer_id')
                     ->label('Telegram peer ID')
                     ->disabled()
@@ -82,6 +95,15 @@ class CustomerResource extends Resource
                 Tables\Columns\TextColumn::make('tin')
                     ->label('TIN')
                     ->placeholder('—'),
+                Tables\Columns\TextColumn::make('credit_limit')
+                    ->label('Credit limit')
+                    ->money(Setting::getDefaultCurrency())
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\IconColumn::make('credit_blocked')
+                    ->label('Credit blocked')
+                    ->boolean()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 //

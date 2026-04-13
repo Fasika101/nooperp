@@ -20,9 +20,11 @@ class BankTransactionObserver
     public function creating(BankTransaction $transaction): void
     {
         if (! $transaction->branch_id && $transaction->bank_account_id) {
-            $transaction->branch_id = BankAccount::query()
-                ->whereKey($transaction->bank_account_id)
-                ->value('branch_id');
+            $account = BankAccount::query()->find($transaction->bank_account_id);
+            $fallback = $account?->getSingleBranchIdForFallback();
+            if ($fallback !== null) {
+                $transaction->branch_id = $fallback;
+            }
         }
     }
 
@@ -34,9 +36,11 @@ class BankTransactionObserver
     public function updating(BankTransaction $transaction): void
     {
         if (! $transaction->branch_id && $transaction->bank_account_id) {
-            $transaction->branch_id = BankAccount::query()
-                ->whereKey($transaction->bank_account_id)
-                ->value('branch_id');
+            $account = BankAccount::query()->find($transaction->bank_account_id);
+            $fallback = $account?->getSingleBranchIdForFallback();
+            if ($fallback !== null) {
+                $transaction->branch_id = $fallback;
+            }
         }
 
         self::$originalStates[$this->getObserverKey($transaction)] = [

@@ -113,6 +113,25 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('total_amount')
                     ->money($currency)
                     ->sortable(),
+                Tables\Columns\TextColumn::make('amount_paid')
+                    ->label('Paid')
+                    ->money($currency)
+                    ->sortable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('balance_due')
+                    ->label('Balance')
+                    ->money($currency)
+                    ->sortable()
+                    ->color(fn ($state): string => (float) $state > 0 ? 'danger' : 'success'),
+                Tables\Columns\TextColumn::make('payment_status')
+                    ->label('Pay status')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'paid' => 'success',
+                        'partial' => 'warning',
+                        'unpaid' => 'danger',
+                        default => 'gray',
+                    }),
                 Tables\Columns\TextColumn::make('branch.name')
                     ->label('Branch')
                     ->placeholder('—'),

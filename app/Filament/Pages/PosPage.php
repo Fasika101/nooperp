@@ -830,8 +830,37 @@ class PosPage extends Page
             return;
         }
 
+        $paymentType = PaymentType::query()->where('is_active', true)->whereKey($paymentTypeId)->first();
+        if (! $paymentType) {
+            Notification::make()
+                ->warning()
+                ->title('Invalid payment type')
+                ->send();
+
+            return;
+        }
+
+        if (! $paymentType->isUsableAtBranch((int) $this->branchId)) {
+            Notification::make()
+                ->warning()
+                ->title('Payment type not available')
+                ->body('This payment type is not enabled for the selected branch.')
+                ->send();
+
+            return;
+        }
+
         $customerId = $this->customerId;
         if (! $customerId) {
+            if ($paymentType->is_accounts_receivable) {
+                Notification::make()
+                    ->warning()
+                    ->title('Customer required')
+                    ->body('Select a customer (not walk-in) before selling on account.')
+                    ->send();
+
+                return;
+            }
             $walkIn = Customer::firstOrCreate(
                 ['email' => 'walkin@pos.local'],
                 ['name' => 'Walk-in Customer', 'phone' => null, 'address' => null, 'tin' => null]
@@ -839,16 +868,41 @@ class PosPage extends Page
             $customerId = $walkIn->id;
         }
 
+        if ($paymentType->is_accounts_receivable) {
+            $customer = Customer::query()->find($customerId);
+            if (! $customer || $customer->isWalkIn()) {
+                Notification::make()
+                    ->warning()
+                    ->title('Customer required')
+                    ->body('Select a customer with a phone number before selling on account.')
+                    ->send();
+
+                return;
+            }
+            $totalPreview = $this->getFinalTotal();
+            if (! $customer->canChargeAmount($totalPreview)) {
+                Notification::make()
+                    ->warning()
+                    ->title('Credit not available')
+                    ->body($customer->credit_blocked
+                        ? 'This customer is blocked from credit sales.'
+                        : 'This sale would exceed the customer credit limit or outstanding balance.')
+                    ->send();
+
+                return;
+            }
+        }
+
         try {
             $order = null;
-            DB::transaction(function () use ($customerId, $paymentTypeId, &$order) {
+            DB::transaction(function () use ($customerId, $paymentTypeId, $paymentType, &$order) {
                 $totalAmount = $this->getFinalTotal();
                 $discountValue = $this->getDiscountValue();
                 $taxValue = $this->getTaxValue();
                 $branchId = $this->branchId;
 
                 $data = $this->posData;
-                $order = Order::create([
+                $orderData = [
                     'customer_id' => $customerId,
                     'branch_id' => $branchId,
                     'total_amount' => $totalAmount,
@@ -858,7 +912,15 @@ class PosPage extends Page
                     'tax_amount' => $taxValue,
                     'tax_type_id' => filled($data['taxTypeId'] ?? null) ? (int) $data['taxTypeId'] : null,
                     'status' => 'completed',
-                ]);
+                ];
+
+                if ($paymentType->is_accounts_receivable) {
+                    $orderData['amount_paid'] = 0;
+                    $orderData['balance_due'] = $totalAmount;
+                    $orderData['payment_status'] = Order::PAYMENT_STATUS_UNPAID;
+                }
+
+                $order = Order::create($orderData);
 
                 foreach ($this->cart as $item) {
                     $product = Product::query()->whereKey($item['product_id'])->first();
@@ -894,14 +956,16 @@ class PosPage extends Page
                     }
                 }
 
-                Payment::create([
-                    'order_id' => $order->id,
-                    'branch_id' => $branchId,
-                    'payment_type_id' => (int) $paymentTypeId,
-                    'amount' => $totalAmount,
-                    'payment_method' => PaymentType::find($paymentTypeId)?->name ?? 'cash',
-                    'status' => 'completed',
-                ]);
+                if (! $paymentType->is_accounts_receivable) {
+                    Payment::create([
+                        'order_id' => $order->id,
+                        'branch_id' => $branchId,
+                        'payment_type_id' => (int) $paymentTypeId,
+                        'amount' => $totalAmount,
+                        'payment_method' => $paymentType->name,
+                        'status' => 'completed',
+                    ]);
+                }
             });
 
             if ($order instanceof Order) {

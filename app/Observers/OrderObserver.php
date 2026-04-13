@@ -40,10 +40,11 @@ class OrderObserver
 
         BankTransaction::create([
             'bank_account_id' => $account->id,
+            'branch_id' => $order->branch_id,
             'date' => $order->created_at->toDateString(),
             'type' => BankTransaction::TYPE_DEPOSIT,
             'amount' => $amount,
-            'description' => 'Sale #' . $order->id . ' - ' . ($order->customer?->name ?? 'Walk-in'),
+            'description' => 'Sale #'.$order->id.' - '.($order->customer?->name ?? 'Walk-in'),
             'reference_type' => Order::class,
             'reference_id' => $order->id,
         ]);

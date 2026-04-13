@@ -44,6 +44,13 @@ class StockPurchaseService
                 ]);
             }
 
+            $branchIdsForAccount = array_column($lines, 'branch_id');
+            if (! $account->isUsableAtAllBranches($branchIdsForAccount)) {
+                throw ValidationException::withMessages([
+                    'bank_account_id' => 'The selected account is not available for every branch in this restock.',
+                ]);
+            }
+
             $oldStock = (int) $product->stock;
             $oldCost = (float) ($product->cost_price ?? 0);
 
@@ -95,7 +102,7 @@ class StockPurchaseService
                 'amount' => $totalCost,
                 'expense_type_id' => $inventoryExpenseType->id,
                 'bank_account_id' => $account->id,
-                'branch_id' => $account->branch_id,
+                'branch_id' => (int) $lines[0]['branch_id'],
                 'vendor' => $data['vendor'] ?? null,
                 'description' => 'Restock: '.$product->name.' ('.$totalQty.' units): '.implode('; ', $branchSummaries),
             ]);
@@ -125,9 +132,9 @@ class StockPurchaseService
                 ]);
             }
 
-            if ($account->branch_id && (int) $account->branch_id !== (int) $branch->id) {
+            if (! $account->isUsableAtBranch((int) $branch->id)) {
                 throw ValidationException::withMessages([
-                    'bank_account_id' => "The selected account belongs to {$account->branch?->name}, not {$branch->name}.",
+                    'bank_account_id' => "The selected account is not available for {$branch->name}.",
                 ]);
             }
 

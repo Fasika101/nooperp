@@ -17,14 +17,24 @@ class BankAccountBalancesWidget extends BaseWidget
 
     protected function getColumns(): int
     {
-        return max(1, min(BankAccount::query()->count(), 4));
+        $query = BankAccount::query();
+        if (auth()->user()?->isBranchRestricted()) {
+            $query->forBranch((int) auth()->user()->branch_id);
+        }
+
+        return max(1, min($query->count(), 4));
     }
 
     protected function getStats(): array
     {
         $currency = Setting::getDefaultCurrency();
 
-        return BankAccount::query()
+        $query = BankAccount::query();
+        if (auth()->user()?->isBranchRestricted()) {
+            $query->forBranch((int) auth()->user()->branch_id);
+        }
+
+        return $query
             ->orderByDesc('is_default')
             ->orderBy('name')
             ->get()

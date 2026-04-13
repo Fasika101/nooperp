@@ -184,6 +184,7 @@ class ProductCreationServiceTest extends TestCase
             'current_balance' => 1000,
             'is_default' => true,
         ]);
+        $account->branches()->syncWithoutDetaching([$branchA->id, $branchB->id]);
 
         $category = Category::query()->create([
             'name' => 'Frames',

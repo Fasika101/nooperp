@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Branch extends Model
@@ -40,9 +41,14 @@ class Branch extends Model
         return $this->hasMany(BranchProductStock::class);
     }
 
-    public function bankAccounts(): HasMany
+    public function bankAccounts(): BelongsToMany
     {
-        return $this->hasMany(BankAccount::class);
+        return $this->belongsToMany(BankAccount::class, 'bank_account_branch')->withTimestamps();
+    }
+
+    public function paymentTypes(): BelongsToMany
+    {
+        return $this->belongsToMany(PaymentType::class, 'payment_type_branch')->withTimestamps();
     }
 
     public function orders(): HasMany

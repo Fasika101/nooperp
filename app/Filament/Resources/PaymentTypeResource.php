@@ -33,29 +33,64 @@ class PaymentTypeResource extends Resource
     {
         return $schema
             ->components([
-                Select::make('branch_id')
-                    ->label('Branch')
-                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
-                    ->required()
-                    ->searchable()
-                    ->preload()
-                    ->live()
-                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false)
-                    ->dehydrated(),
                 TextInput::make('name')
                     ->required()
                     ->maxLength(255)
                     ->placeholder('e.g. Cash, Card, Mobile Money'),
-                Select::make('bank_account_id')
-                    ->label('Linked Account')
-                    ->options(fn (Get $get) => BankAccount::query()
-                        ->when($get('branch_id'), fn ($query, $branchId) => $query->where('branch_id', $branchId))
-                        ->orderBy('name')
-                        ->pluck('name', 'id'))
+                Toggle::make('is_global')
+                    ->label('Available at all branches')
+                    ->helperText('When enabled, this payment type appears at every branch on POS and in payment pickers.')
+                    ->live()
+                    ->default(false)
+                    ->afterStateUpdated(function ($state, callable $set): void {
+                        if ($state) {
+                            $set('branches', []);
+                        }
+                    }),
+                Select::make('branches')
+                    ->label('Branches')
+                    ->multiple()
+                    ->relationship(
+                        'branches',
+                        'name',
+                        fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'),
+                    )
+                    ->required(fn (Get $get): bool => ! ($get('is_global') ?? false))
+                    ->visible(fn (Get $get): bool => ! ($get('is_global') ?? false))
                     ->searchable()
                     ->preload()
-                    ->helperText('Sales paid with this method will increase this account.'),
+                    ->live()
+                    ->default(fn () => auth()->user()?->branch_id
+                        ? [auth()->user()->branch_id]
+                        : (Branch::getDefaultBranch()?->id ? [Branch::getDefaultBranch()->id] : []))
+                    ->disabled(fn (): bool => auth()->user()?->isBranchRestricted() ?? false)
+                    ->dehydrated(),
+                Toggle::make('is_accounts_receivable')
+                    ->label('On account (no bank deposit)')
+                    ->helperText('Use for “sell now, collect later”. No money enters a bank account until you record a collection payment on the order. Requires a named customer at POS.')
+                    ->live()
+                    ->default(false),
+                Select::make('bank_account_id')
+                    ->label('Linked Account')
+                    ->options(function (Get $get) {
+                        $q = BankAccount::query();
+                        if ($get('is_global') ?? false) {
+                            // Any account can be chosen; user should pick one valid for their workflow.
+                        } else {
+                            $ids = array_values(array_filter(array_map('intval', $get('branches') ?? [])));
+                            if (count($ids) > 1) {
+                                $q->forAllBranches($ids);
+                            } elseif (count($ids) === 1) {
+                                $q->forBranch($ids[0]);
+                            }
+                        }
+
+                        return $q->orderBy('name')->pluck('name', 'id');
+                    })
+                    ->searchable()
+                    ->preload()
+                    ->visible(fn (Get $get) => ! $get('is_accounts_receivable'))
+                    ->helperText('Sales paid with this method will increase this account. Not used for on-account sales.'),
                 Toggle::make('is_active')
                     ->label('Active')
                     ->default(true)
@@ -70,14 +105,18 @@ class PaymentTypeResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('branch.name')
-                    ->label('Branch')
-                    ->placeholder('—')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('branch_scope')
+                    ->label('Branches')
+                    ->state(fn (PaymentType $record): string => $record->is_global
+                        ? 'All branches'
+                        : ($record->branches->pluck('name')->filter()->join(', ') ?: ($record->branch?->name ?? '—'))),
                 Tables\Columns\TextColumn::make('bankAccount.name')
                     ->label('Linked Account')
                     ->placeholder('—')
                     ->sortable(),
+                Tables\Columns\IconColumn::make('is_accounts_receivable')
+                    ->label('On account')
+                    ->boolean(),
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean(),
@@ -111,11 +150,11 @@ class PaymentTypeResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
+        $query = parent::getEloquentQuery()->with(['branches', 'branch', 'bankAccount']);
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->where('branch_id', $user->branch_id);
+            $query->forBranch($user->branch_id);
         }
 
         return $query;

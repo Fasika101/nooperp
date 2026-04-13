@@ -35,7 +35,14 @@ class PaymentsRelationManager extends RelationManager
                     ->prefix($currency)
                     ->minValue(0),
                 Select::make('payment_type_id')
-                    ->relationship('paymentType', 'name', fn ($query) => $query->where('is_active', true)->orderBy('name'))
+                    ->relationship(
+                        'paymentType',
+                        'name',
+                        fn ($query) => $query->where('is_active', true)->where('is_accounts_receivable', false)->when(
+                            $this->getOwnerRecord()->branch_id,
+                            fn ($q, $branchId) => $q->forBranch((int) $branchId),
+                        )->orderBy('name'),
+                    )
                     ->required()
                     ->searchable()
                     ->preload()

@@ -12,7 +12,20 @@ class CreateBankAccount extends CreateRecord
 
     protected function afterCreate(): void
     {
+        $this->syncBranchPrimaryFromForm();
         $this->ensureSingleDefaultAccount();
+    }
+
+    protected function syncBranchPrimaryFromForm(): void
+    {
+        $record = $this->getRecord();
+        if ($record->is_global) {
+            $record->branches()->detach();
+            $record->branch_id = null;
+        } else {
+            $record->branch_id = $record->branches()->orderBy('branches.id')->first()?->id;
+        }
+        $record->saveQuietly();
     }
 
     protected function ensureSingleDefaultAccount(): void

@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\AccountsReceivablePage;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\DataWipePage;
 use App\Filament\Pages\EditProfilePage;
@@ -80,6 +81,7 @@ class AdminPanelProvider extends PanelProvider
                 FinancePage::class,
                 ProfitLossReportPage::class,
                 ExpenseReportsPage::class,
+                AccountsReceivablePage::class,
                 SettingsPage::class,
                 LandingPageSettingsPage::class,
                 IntegrationsPage::class,

@@ -11,10 +11,11 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -40,14 +41,32 @@ class BankAccountResource extends Resource
 
         return $schema
             ->components([
-                Select::make('branch_id')
-                    ->label('Branch')
-                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
-                    ->required()
+                Toggle::make('is_global')
+                    ->label('Available at all branches')
+                    ->helperText('When enabled, this account can be used for deposits, sales, and expenses at any branch.')
+                    ->live()
+                    ->default(false)
+                    ->afterStateUpdated(function ($state, callable $set): void {
+                        if ($state) {
+                            $set('branches', []);
+                        }
+                    }),
+                Select::make('branches')
+                    ->label('Branches')
+                    ->multiple()
+                    ->relationship(
+                        'branches',
+                        'name',
+                        fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'),
+                    )
+                    ->required(fn (Get $get): bool => ! ($get('is_global') ?? false))
+                    ->visible(fn (Get $get): bool => ! ($get('is_global') ?? false))
                     ->searchable()
                     ->preload()
-                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false)
+                    ->default(fn () => auth()->user()?->branch_id
+                        ? [auth()->user()->branch_id]
+                        : (Branch::getDefaultBranch()?->id ? [Branch::getDefaultBranch()->id] : []))
+                    ->disabled(fn (): bool => auth()->user()?->isBranchRestricted() ?? false)
                     ->dehydrated(),
                 TextInput::make('name')
                     ->required()
@@ -93,9 +112,11 @@ class BankAccountResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('branch.name')
-                    ->label('Branch')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('branch_scope')
+                    ->label('Branches')
+                    ->state(fn (BankAccount $record): string => $record->is_global
+                        ? 'All branches'
+                        : ($record->branches->pluck('name')->filter()->join(', ') ?: ($record->branch?->name ?? '—'))),
                 Tables\Columns\TextColumn::make('bank_name')
                     ->placeholder('—')
                     ->sortable(),
@@ -145,11 +166,11 @@ class BankAccountResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
+        $query = parent::getEloquentQuery()->with(['branches', 'branch']);
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->where('branch_id', $user->branch_id);
+            $query->forBranch($user->branch_id);
         }
 
         return $query;

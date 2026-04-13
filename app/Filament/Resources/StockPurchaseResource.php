@@ -120,11 +120,22 @@ class StockPurchaseResource extends Resource
                     ->default(now()),
                 Select::make('bank_account_id')
                     ->label('Pay From Account')
-                    ->options(fn () => BankAccount::query()
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
-                        ->orderByDesc('is_default')
-                        ->orderBy('name')
-                        ->pluck('name', 'id'))
+                    ->options(function (Get $get) {
+                        $branchIds = array_values(array_unique(array_filter(array_map('intval', array_column($get('restock_allocations') ?? [], 'branch_id')))));
+                        $q = BankAccount::query();
+                        if (count($branchIds) > 1) {
+                            $q->forAllBranches($branchIds);
+                        } elseif (count($branchIds) === 1) {
+                            $q->forBranch($branchIds[0]);
+                        }
+                        if (auth()->user()?->isBranchRestricted()) {
+                            $q->forBranch((int) auth()->user()->branch_id);
+                        }
+
+                        return $q->orderByDesc('is_default')
+                            ->orderBy('name')
+                            ->pluck('name', 'id');
+                    })
                     ->required()
                     ->searchable()
                     ->preload()

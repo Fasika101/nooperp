@@ -119,7 +119,7 @@ class ExpenseResource extends Resource
                 Select::make('bank_account_id')
                     ->label('Pay From Account')
                     ->options(fn (Get $get) => BankAccount::query()
-                        ->when($get('branch_id'), fn (Builder $query, $branchId) => $query->where('branch_id', $branchId))
+                        ->when($get('branch_id'), fn (Builder $query, $branchId) => $query->forBranch((int) $branchId))
                         ->orderByDesc('is_default')
                         ->orderBy('name')
                         ->pluck('name', 'id'))
