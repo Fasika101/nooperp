@@ -77,6 +77,9 @@ class PosPage extends Page
 
     public string $newCustomerTin = '';
 
+    /** Optional address for an existing selected customer when their profile has no address (saved on checkout). */
+    public string $selectedCustomerAddressOverride = '';
+
     /** products | customize */
     public string $posAreaTab = 'products';
 
@@ -656,6 +659,35 @@ class PosPage extends Page
         return Customer::find($this->customerId);
     }
 
+    public function shouldShowOptionalAddressForSelectedCustomer(): bool
+    {
+        if (! $this->customerId) {
+            return false;
+        }
+        $customer = $this->getSelectedCustomer();
+        if (! $customer || $customer->isWalkIn()) {
+            return false;
+        }
+
+        return trim((string) $customer->address) === '';
+    }
+
+    protected function applyOptionalCustomerAddressFromPos(int $customerId): void
+    {
+        $customer = Customer::query()->find($customerId);
+        if (! $customer || $customer->isWalkIn()) {
+            return;
+        }
+        if (trim((string) $customer->address) !== '') {
+            return;
+        }
+        $trimmed = trim($this->selectedCustomerAddressOverride);
+        if ($trimmed === '') {
+            return;
+        }
+        $customer->update(['address' => $trimmed]);
+    }
+
     public function sendCartToTelegram(): void
     {
         if ($this->cart === []) {
@@ -713,6 +745,7 @@ class PosPage extends Page
 
         if ($selectedCustomer && $selectedCustomer->phone !== $this->customerSearch) {
             $this->customerId = null;
+            $this->selectedCustomerAddressOverride = '';
         }
     }
 
@@ -726,6 +759,7 @@ class PosPage extends Page
 
         $this->customerId = $customer->id;
         $this->customerSearch = (string) ($customer->phone ?? '');
+        $this->selectedCustomerAddressOverride = '';
     }
 
     public function updatedBranchId(): void
@@ -775,6 +809,7 @@ class PosPage extends Page
         $this->newCustomerPhone = '';
         $this->newCustomerAddress = '';
         $this->newCustomerTin = '';
+        $this->selectedCustomerAddressOverride = '';
 
         Notification::make()
             ->success()
@@ -786,6 +821,7 @@ class PosPage extends Page
     {
         $this->customerId = null;
         $this->customerSearch = '';
+        $this->selectedCustomerAddressOverride = '';
         $this->showAddCustomerForm = false;
     }
 
@@ -896,6 +932,8 @@ class PosPage extends Page
         try {
             $order = null;
             DB::transaction(function () use ($customerId, $paymentTypeId, $paymentType, &$order) {
+                $this->applyOptionalCustomerAddressFromPos((int) $customerId);
+
                 $totalAmount = $this->getFinalTotal();
                 $discountValue = $this->getDiscountValue();
                 $taxValue = $this->getTaxValue();
@@ -983,6 +1021,7 @@ class PosPage extends Page
             $this->cart = [];
             $this->customerId = null;
             $this->customerSearch = '';
+            $this->selectedCustomerAddressOverride = '';
             $this->posData = [
                 'discountAmount' => 0,
                 'discountType' => 'fixed',

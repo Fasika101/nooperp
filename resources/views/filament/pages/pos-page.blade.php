@@ -135,8 +135,9 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 .pos-cart-field { margin-bottom: 0.75rem; }
 .pos-cart-field label { display: block; font-size: 0.75rem; font-weight: 500; color: rgb(107 114 128); margin-bottom: 0.25rem; }
 .dark .pos-cart-field label { color: rgb(156 163 175); }
-.pos-cart-field input, .pos-cart-field select { width: 100%; padding: 0.5rem 0.75rem; border-radius: 0.5rem; border: 1px solid rgb(209 213 219); background: white; font-size: 0.875rem; }
-.dark .pos-cart-field input, .dark .pos-cart-field select { border-color: rgb(75 85 99); background: rgb(31 41 55); color: white; }
+.pos-cart-field input, .pos-cart-field select, .pos-cart-field textarea { width: 100%; padding: 0.5rem 0.75rem; border-radius: 0.5rem; border: 1px solid rgb(209 213 219); background: white; font-size: 0.875rem; }
+.dark .pos-cart-field input, .dark .pos-cart-field select, .dark .pos-cart-field textarea { border-color: rgb(75 85 99); background: rgb(31 41 55); color: white; }
+.pos-cart-field textarea { resize: vertical; min-height: 2.75rem; }
 .pos-cart-field-row { display: flex; gap: 0.5rem; }
 .pos-cart-field-row .pos-cart-field { flex: 1; }
 .pos-cart-field-row .pos-cart-field:first-child { flex: 0 0 6rem; }
@@ -621,6 +622,19 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                             @if($this->getSelectedCustomer())
                                 <div class="pos-customer-selected">
                                     Selected: {{ $this->getSelectedCustomer()->phone ?: 'No phone' }}{{ $this->getSelectedCustomer()->name ? ' - ' . $this->getSelectedCustomer()->name : '' }}
+                                </div>
+                            @endif
+                            @if($this->shouldShowOptionalAddressForSelectedCustomer())
+                                <div class="pos-cart-field" style="margin-top: 0.5rem;">
+                                    <label>Address <span style="color: rgb(107 114 128); font-weight: 400;">(optional)</span></label>
+                                    <textarea
+                                        wire:model.live="selectedCustomerAddressOverride"
+                                        rows="2"
+                                        placeholder="Add address to save on this customer"
+                                    ></textarea>
+                                    <p style="margin: 0.25rem 0 0; font-size: 0.6875rem; line-height: 1.35; color: rgb(107 114 128);">
+                                        No address on file — you can add one here; it will be saved when you complete the sale.
+                                    </p>
                                 </div>
                             @endif
                             <div class="pos-customer-actions">
