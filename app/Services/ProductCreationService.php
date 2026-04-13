@@ -42,7 +42,6 @@ class ProductCreationService
                 'lens_width_mm' => self::nullableDecimal($data['lens_width_mm'] ?? null),
                 'bridge_width_mm' => self::nullableDecimal($data['bridge_width_mm'] ?? null),
                 'temple_length_mm' => self::nullableDecimal($data['temple_length_mm'] ?? null),
-                'original_price' => $data['original_price'] ?? null,
                 'cost_price' => $initialStock > 0 ? 0 : ($data['cost_price'] ?? null),
                 'price' => $data['price'],
                 'stock' => 0,

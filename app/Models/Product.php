@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection as SupportCollection;
 
 class Product extends Model
 {
@@ -23,7 +24,6 @@ class Product extends Model
         'bridge_width_mm',
         'temple_length_mm',
         'price',
-        'original_price',
         'cost_price',
         'stock',
         'image',
@@ -34,7 +34,6 @@ class Product extends Model
     {
         return [
             'price' => 'decimal:2',
-            'original_price' => 'decimal:2',
             'cost_price' => 'decimal:2',
             'lens_width_mm' => 'decimal:1',
             'bridge_width_mm' => 'decimal:1',
@@ -220,5 +219,91 @@ class Product extends Model
         return (int) $this->branchStocks()
             ->where('branch_id', $branchId)
             ->value('quantity');
+    }
+
+    /**
+     * Color names for POS display (prefers eager-loaded attachedProductOptions).
+     *
+     * @return SupportCollection<int, string>
+     */
+    public function posColorLabels(): SupportCollection
+    {
+        if ($this->relationLoaded('attachedProductOptions')) {
+            $names = $this->attachedProductOptions
+                ->where('type', ProductOption::TYPE_COLOR)
+                ->sortBy('name')
+                ->pluck('name')
+                ->filter()
+                ->unique()
+                ->values();
+            if ($names->isNotEmpty()) {
+                return SupportCollection::make($names->all());
+            }
+        }
+
+        if ($this->relationLoaded('color') && $this->color?->name) {
+            return SupportCollection::make([$this->color->name]);
+        }
+
+        return SupportCollection::make(
+            $this->availableColorOptions()->pluck('name')->unique()->values()->all()
+        );
+    }
+
+    /**
+     * Frame / lens size option names for POS display.
+     *
+     * @return SupportCollection<int, string>
+     */
+    public function posSizeLabels(): SupportCollection
+    {
+        if ($this->relationLoaded('attachedProductOptions')) {
+            $names = $this->attachedProductOptions
+                ->where('type', ProductOption::TYPE_SIZE)
+                ->sortBy('name')
+                ->pluck('name')
+                ->filter()
+                ->unique()
+                ->values();
+            if ($names->isNotEmpty()) {
+                return SupportCollection::make($names->all());
+            }
+        }
+
+        if ($this->relationLoaded('size') && $this->size?->name) {
+            return SupportCollection::make([$this->size->name]);
+        }
+
+        return SupportCollection::make(
+            $this->availableSizeOptions()->pluck('name')->unique()->values()->all()
+        );
+    }
+
+    /**
+     * Lens width / bridge / temple for POS (searchable and display).
+     */
+    public function posMeasurementsLabel(): ?string
+    {
+        $has = $this->lens_width_mm !== null
+            || $this->bridge_width_mm !== null
+            || $this->temple_length_mm !== null;
+        if (! $has) {
+            return null;
+        }
+
+        $fmt = static fn ($v): string => number_format((float) $v, 1, '.', '');
+
+        $parts = [];
+        if ($this->lens_width_mm !== null) {
+            $parts[] = 'Lens '.$fmt($this->lens_width_mm).'mm';
+        }
+        if ($this->bridge_width_mm !== null) {
+            $parts[] = 'Bridge '.$fmt($this->bridge_width_mm).'mm';
+        }
+        if ($this->temple_length_mm !== null) {
+            $parts[] = 'Temple '.$fmt($this->temple_length_mm).'mm';
+        }
+
+        return $parts === [] ? null : implode(' · ', $parts);
     }
 }

@@ -60,9 +60,10 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 @media (min-width: 768px) { .pos-product-info { padding: 0.75rem; } }
 .pos-product-name { font-weight: 500; font-size: 0.875rem; color: rgb(3 7 18); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .dark .pos-product-name { color: white; }
-.pos-product-prices { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.5rem; }
-.pos-product-original { font-size: 0.75rem; color: rgb(107 114 128); text-decoration: line-through; }
-.dark .pos-product-original { color: rgb(156 163 175); }
+.pos-product-meta { display: flex; flex-direction: column; gap: 0.125rem; margin-top: 0.25rem; font-size: 0.6875rem; line-height: 1.35; color: rgb(107 114 128); }
+.dark .pos-product-meta { color: rgb(156 163 175); }
+.pos-product-meta span { display: block; }
+.pos-product-prices { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.5rem; margin-top: 0.25rem; }
 .pos-product-price { font-size: 0.875rem; font-weight: 600; color: var(--primary-600); }
 .pos-product-stock { font-size: 0.75rem; color: rgb(107 114 128); }
 .dark .pos-product-stock { color: rgb(156 163 175); }
@@ -252,7 +253,7 @@ box-shadow: 0 0 0 1px var(--primary-500); }
             <h1>Point of Sale</h1>
             <div class="pos-search-wrap">
                 <x-filament::icon icon="heroicon-o-magnifying-glass" class="pos-search-icon" />
-                <input type="text" wire:model.live.debounce.300ms="search" placeholder="Search products..." />
+                <input type="text" wire:model.live.debounce.300ms="search" placeholder="Search name, frame size, color, material, lens mm…" />
             </div>
         </div>
 
@@ -278,16 +279,27 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                     <div class="pos-grid-wrap">
                         <div class="pos-grid">
                             @forelse($this->getProducts() as $product)
+                                @php
+                                    $posColors = $product->posColorLabels()->implode(', ');
+                                    $posSizes = $product->posSizeLabels()->implode(', ');
+                                    $posMeas = $product->posMeasurementsLabel();
+                                    $posMaterial = $product->material?->name;
+                                @endphp
                                 <button type="button" wire:click="addToCart({{ $product->id }})" class="pos-product-card">
                                     <div class="pos-product-img">
                                         <img src="{{ $this->getProductImageUrl($product->image) }}" alt="{{ $product->name }}" />
                                     </div>
                                     <div class="pos-product-info">
                                         <span class="pos-product-name">{{ $product->name }}</span>
+                                        @if($posColors !== '' || $posMaterial || $posSizes !== '' || $posMeas)
+                                            <div class="pos-product-meta">
+                                                @if($posColors !== '')<span><strong>Colors:</strong> {{ $posColors }}</span>@endif
+                                                @if($posMaterial)<span><strong>Material:</strong> {{ $posMaterial }}</span>@endif
+                                                @if($posSizes !== '')<span><strong>Sizes:</strong> {{ $posSizes }}</span>@endif
+                                                @if($posMeas)<span><strong>Fit:</strong> {{ $posMeas }}</span>@endif
+                                            </div>
+                                        @endif
                                         <div class="pos-product-prices">
-                                            @if($product->original_price)
-                                                <span class="pos-product-original">{{ \Illuminate\Support\Number::currency($product->original_price, $this->getDefaultCurrency()) }}</span>
-                                            @endif
                                             <span class="pos-product-price">{{ \Illuminate\Support\Number::currency($product->price, $this->getDefaultCurrency()) }}</span>
                                         </div>
                                         <span class="pos-product-stock">Stock: {{ $product->getStockForBranch($this->branchId) }}</span>
@@ -382,6 +394,9 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                 <p class="pos-optical-notice">Prescription notice: use &quot;—&quot; in dropdowns where a value is unknown. Complete OD / OS and PD before adding to cart.</p>
                                 @if($opticalVision === 'progressive')
                                     <p class="pos-optical-notice">Progressive: confirm medium (M) or large (L) frame where required.</p>
+                                    @if(\App\Models\Setting::getOpticalProgressiveCylinderSurcharge() > 0)
+                                        <p class="pos-optical-notice">When either OD or OS cylinder is not 0.00, {{ \Illuminate\Support\Number::currency(\App\Models\Setting::getOpticalProgressiveCylinderSurcharge(), $this->getDefaultCurrency()) }} is added to the lens package price below.</p>
+                                    @endif
                                 @endif
 
                                 <div class="pos-opt-section">
@@ -449,15 +464,17 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 
                                 <div class="pos-opt-section">
                                     <h4>Lens package &amp; price</h4>
-                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Select one priced option (required).</p>
+                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Select one priced option (required).@if($opticalVision === 'progressive' && $this->getProgressiveCylinderSurchargeAmount() > 0) Totals include the progressive cylinder add-on.@endif</p>
                                     <div class="pos-remark-grid">
                                         @foreach($this->getOpticalPrescriptionRemarks() as $remark)
                                             @php
                                                 $rPrice = $opticalVision === 'progressive' ? $remark->price_progressive : $remark->price_single_vision;
+                                                $cylSur = $this->getProgressiveCylinderSurchargeAmount();
+                                                $lineTotal = $rPrice + $cylSur;
                                             @endphp
                                             <label class="pos-remark-item {{ (int) $opticalRemarkId === (int) $remark->id ? 'selected' : '' }}">
                                                 <input type="radio" wire:model.live="opticalRemarkId" value="{{ $remark->id }}" style="accent-color: var(--primary-600);" />
-                                                <span><strong>{{ $remark->name }}</strong> — {{ \Illuminate\Support\Number::currency($rPrice, $this->getDefaultCurrency()) }}</span>
+                                                <span><strong>{{ $remark->name }}</strong> — {{ \Illuminate\Support\Number::currency($lineTotal, $this->getDefaultCurrency()) }}@if($cylSur > 0) <span style="font-size: 0.75rem; color: rgb(107 114 128);">(incl. {{ \Illuminate\Support\Number::currency($cylSur, $this->getDefaultCurrency()) }} cyl)</span>@endif</span>
                                             </label>
                                         @endforeach
                                     </div>

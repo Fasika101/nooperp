@@ -124,10 +124,6 @@ class ProductResource extends Resource
                     ->columns(3),
                 Section::make('Pricing & stock')
                     ->schema([
-                        TextEntry::make('original_price')
-                            ->label('List / original price')
-                            ->money($currency)
-                            ->placeholder('—'),
                         TextEntry::make('cost_price')
                             ->label('Cost price')
                             ->money($currency)
@@ -265,12 +261,6 @@ class ProductResource extends Resource
                     ])
                     ->columns(3)
                     ->collapsed(false),
-                TextInput::make('original_price')
-                    ->label('Original/List Price')
-                    ->numeric()
-                    ->prefix($currency)
-                    ->minValue(0)
-                    ->helperText('List price before discount (optional)'),
                 TextInput::make('cost_price')
                     ->label('Cost Price')
                     ->numeric()
@@ -411,11 +401,6 @@ class ProductResource extends Resource
 
                         return $parts !== [] ? implode('-', $parts) : '';
                     }),
-                Tables\Columns\TextColumn::make('original_price')
-                    ->label('List')
-                    ->money($currency)
-                    ->sortable()
-                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('cost_price')
                     ->label('Cost')
                     ->money($currency)

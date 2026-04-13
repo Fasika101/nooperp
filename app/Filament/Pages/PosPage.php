@@ -135,7 +135,7 @@ class PosPage extends Page
 
     public function getProducts()
     {
-        $with = ['category', 'attachedProductOptions'];
+        $with = ['category', 'attachedProductOptions', 'material', 'size', 'color'];
 
         if ($this->branchId) {
             $branchId = $this->branchId;
@@ -150,10 +150,23 @@ class PosPage extends Page
                     ->where('quantity', '>', 0));
             }, fn ($query) => $query->whereRaw('1 = 0'));
 
-        if ($this->search) {
-            $query->where(function ($q) {
-                $q->where('name', 'like', "%{$this->search}%")
-                    ->orWhereHas('category', fn ($q) => $q->where('name', 'like', "%{$this->search}%"));
+        if (trim($this->search) !== '') {
+            $term = $this->posSearchLikePattern();
+            $query->where(function ($q) use ($term) {
+                $q->where('name', 'like', $term)
+                    ->orWhereHas('category', fn ($cq) => $cq->where('name', 'like', $term))
+                    ->orWhereHas('material', fn ($mq) => $mq->where('name', 'like', $term))
+                    ->orWhereHas('attachedProductOptions', function ($oq) use ($term) {
+                        $oq->whereIn('product_options.type', [
+                            ProductOption::TYPE_SIZE,
+                            ProductOption::TYPE_COLOR,
+                        ])->where('product_options.name', 'like', $term);
+                    })
+                    ->orWhereHas('size', fn ($sq) => $sq->where('name', 'like', $term))
+                    ->orWhereHas('color', fn ($cq) => $cq->where('name', 'like', $term))
+                    ->orWhere('lens_width_mm', 'like', $term)
+                    ->orWhere('bridge_width_mm', 'like', $term)
+                    ->orWhere('temple_length_mm', 'like', $term);
             });
         }
 
@@ -162,6 +175,17 @@ class PosPage extends Page
         }
 
         return $query->orderBy('name')->get();
+    }
+
+    /**
+     * Escape % and _ for SQL LIKE.
+     */
+    protected function posSearchLikePattern(): string
+    {
+        $s = trim($this->search);
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $s);
+
+        return '%'.$escaped.'%';
     }
 
     public function getCategories()
@@ -397,7 +421,7 @@ class PosPage extends Page
                 'color_name' => $colorOptionId ? (string) ProductOption::query()->whereKey($colorOptionId)->value('name') : null,
                 'size_name' => $sizeOptionId ? (string) ProductOption::query()->whereKey($sizeOptionId)->value('name') : null,
                 'price' => (float) $product->price,
-                'unit_cost' => (float) ($product->cost_price ?? $product->original_price ?? 0),
+                'unit_cost' => (float) ($product->cost_price ?? 0),
                 'quantity' => 1,
                 'image' => $product->image,
                 'is_optical' => false,
@@ -1102,10 +1126,66 @@ class PosPage extends Page
         for ($n = 0; $n <= $steps; $n++) {
             $v = round($min + ($n * 0.25), 2);
             $k = number_format($v, 2, '.', '');
-            $opts[$k] = $k;
+            $opts[$k] = $this->formatDiopterOptionLabel($k);
         }
 
         return $opts;
+    }
+
+    /**
+     * Show standard Rx-style signs: negatives with "-", positives with "+", zero plain.
+     *
+     * @param  string  $key  Stored option value (e.g. "-3.00", "0.00", "2.25")
+     */
+    protected function formatDiopterOptionLabel(string $key): string
+    {
+        if ($key === '-') {
+            return '—';
+        }
+
+        $v = (float) $key;
+        if (abs($v) < 0.00001) {
+            return '0.00';
+        }
+
+        $abs = number_format(abs($v), 2, '.', '');
+
+        return $v < 0 ? '-'.$abs : '+'.$abs;
+    }
+
+    /**
+     * Configured surcharge when progressive and either eye has cylinder magnitude &gt; 0.
+     */
+    public function getProgressiveCylinderSurchargeAmount(): float
+    {
+        if ($this->opticalVision !== 'progressive') {
+            return 0.0;
+        }
+
+        $rate = Setting::getOpticalProgressiveCylinderSurcharge();
+        if ($rate <= 0.0) {
+            return 0.0;
+        }
+
+        return $this->hasProgressiveNonZeroCylinderSelected() ? $rate : 0.0;
+    }
+
+    protected function hasProgressiveNonZeroCylinderSelected(): bool
+    {
+        foreach (['od_cyl', 'os_cyl'] as $prop) {
+            $raw = $this->{$prop} ?? null;
+            if ($raw === null || $raw === '' || $raw === '-') {
+                continue;
+            }
+            if (! is_numeric($raw)) {
+                continue;
+            }
+            if (abs((float) $raw) > 0.00001) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function appendOpticalCartLine(string $lineLabel, float $price, array $opticalMeta): void
@@ -1187,7 +1267,9 @@ class PosPage extends Page
             return;
         }
 
-        $price = $remark->priceForVision($this->opticalVision);
+        $basePrice = $remark->priceForVision($this->opticalVision);
+        $cylSurcharge = $this->getProgressiveCylinderSurchargeAmount();
+        $price = $basePrice + $cylSurcharge;
         $visionLabel = $this->opticalVision === 'progressive' ? 'Progressive' : 'Single vision';
 
         $frameMeta = $this->frameMetaForOpticalLine();
@@ -1212,6 +1294,8 @@ class PosPage extends Page
             'vision' => $this->opticalVision,
             'lens_name' => $remark->name,
             'remark_id' => $remark->id,
+            'base_lens_price' => $basePrice,
+            'progressive_cylinder_surcharge' => $cylSurcharge > 0 ? $cylSurcharge : null,
             'lens_type_remarks' => $lensTypeRemarks,
             'od' => [
                 'sph' => $this->od_sph,

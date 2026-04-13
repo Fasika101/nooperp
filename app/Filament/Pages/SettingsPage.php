@@ -42,6 +42,7 @@ class SettingsPage extends Page
             'business_phone' => Setting::get('business_phone'),
             'business_email' => Setting::get('business_email'),
             'business_tin' => Setting::get('business_tin'),
+            'optical_progressive_cylinder_surcharge' => (string) Setting::getOpticalProgressiveCylinderSurcharge(),
         ];
 
         foreach (Setting::getProductOptionFieldsEnabled() as $type => $enabled) {
@@ -59,6 +60,14 @@ class SettingsPage extends Page
         Setting::set('business_phone', $data['business_phone'] ?: null);
         Setting::set('business_email', $data['business_email'] ?: null);
         Setting::set('business_tin', $data['business_tin'] ?: null);
+
+        $cylSurcharge = $data['optical_progressive_cylinder_surcharge'] ?? null;
+        Setting::set(
+            'optical_progressive_cylinder_surcharge',
+            $cylSurcharge !== null && $cylSurcharge !== '' && is_numeric($cylSurcharge)
+                ? (string) round((float) $cylSurcharge, 2)
+                : '0'
+        );
 
         $optionFlags = [];
         foreach (array_keys(ProductOption::getTypeOptions()) as $type) {
@@ -106,6 +115,19 @@ class SettingsPage extends Page
                         TextInput::make('business_tin')
                             ->label('TIN (Tax ID)')
                             ->placeholder('Tax identification number'),
+                    ])
+                    ->columns(1),
+                Section::make('Optical (POS)')
+                    ->description('Pricing rules for the Point of Sale lens customization flow.')
+                    ->schema([
+                        TextInput::make('optical_progressive_cylinder_surcharge')
+                            ->label('Progressive cylinder surcharge')
+                            ->helperText('Added to the prescription lens package price when vision is progressive and either OD or OS cylinder is not 0.00 (unknown “—” does not trigger the surcharge).')
+                            ->numeric()
+                            ->minValue(0)
+                            ->step(0.01)
+                            ->default('0')
+                            ->suffix(Setting::getDefaultCurrency()),
                     ])
                     ->columns(1),
                 Section::make('Product attributes')

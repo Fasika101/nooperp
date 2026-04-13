@@ -93,6 +93,19 @@ class Setting extends Model
     }
 
     /**
+     * Extra amount added to progressive Rx lens lines when either eye has cylinder ≠ 0.00 (POS).
+     */
+    public static function getOpticalProgressiveCylinderSurcharge(): float
+    {
+        $v = self::get('optical_progressive_cylinder_surcharge', '0');
+        if ($v === null || $v === '') {
+            return 0.0;
+        }
+
+        return is_numeric($v) ? (float) $v : 0.0;
+    }
+
+    /**
      * Store a value encrypted with the app key (for API tokens).
      */
     public static function setEncrypted(string $key, ?string $value): void

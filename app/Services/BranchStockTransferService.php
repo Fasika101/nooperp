@@ -49,7 +49,7 @@ class BranchStockTransferService
                 ]);
             }
 
-            $sourceAvg = (float) ($fromStock->avg_cost ?? ($product->cost_price ?? $product->original_price ?? 0));
+            $sourceAvg = (float) ($fromStock->avg_cost ?? ($product->cost_price ?? 0));
 
             $toStock = BranchProductStock::query()->firstOrNew([
                 'branch_id' => $toId,

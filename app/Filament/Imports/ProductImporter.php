@@ -44,13 +44,6 @@ class ProductImporter extends Importer
                 ->numeric()
                 ->example('450.00'),
 
-            ImportColumn::make('original_price')
-                ->label('List / original price')
-                ->rules(['nullable', 'numeric', 'min:0'])
-                ->numeric()
-                ->ignoreBlankState()
-                ->example('500.00'),
-
             ImportColumn::make('cost_price')
                 ->label('Cost price')
                 ->rules(['nullable', 'numeric', 'min:0'])

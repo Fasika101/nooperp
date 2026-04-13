@@ -10,11 +10,12 @@ use App\Models\Setting;
 use App\Models\StockPurchase;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Resources\Resource;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
-use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -38,6 +39,14 @@ class StockPurchaseResource extends Resource
     {
         $currency = Setting::getDefaultCurrency();
 
+        $recalcRestockTotal = function (Get $get, Set $set): void {
+            $sum = 0;
+            foreach (($get('restock_allocations') ?? []) as $line) {
+                $sum += (int) ($line['quantity'] ?? 0);
+            }
+            $set('total_cost', round($sum * (float) ($get('unit_cost') ?: 0), 2));
+        };
+
         return $schema
             ->components([
                 Select::make('product_id')
@@ -46,18 +55,42 @@ class StockPurchaseResource extends Resource
                     ->searchable()
                     ->preload()
                     ->live()
-                    ->afterStateUpdated(function ($state, Set $set) {
+                    ->afterStateUpdated(function ($state, Set $set, Get $get) use ($recalcRestockTotal) {
                         $product = Product::query()->find($state);
 
                         $set('unit_cost', null);
                         $set('sale_price', $product ? (float) $product->price : null);
+                        $recalcRestockTotal($get, $set);
                     }),
-                TextInput::make('quantity')
-                    ->required()
-                    ->numeric()
-                    ->minValue(1)
+                Repeater::make('restock_allocations')
+                    ->label('Restock by branch')
+                    ->schema([
+                        Select::make('branch_id')
+                            ->label('Branch')
+                            ->options(fn () => Branch::query()
+                                ->where('is_active', true)
+                                ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereKey(auth()->user()?->branch_id))
+                                ->orderByDesc('is_default')
+                                ->orderBy('name')
+                                ->pluck('name', 'id'))
+                            ->required()
+                            ->searchable()
+                            ->preload()
+                            ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
+                            ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false),
+                        TextInput::make('quantity')
+                            ->label('Units')
+                            ->numeric()
+                            ->minValue(1)
+                            ->required(),
+                    ])
+                    ->defaultItems(1)
+                    ->addActionLabel('Add branch')
+                    ->reorderable(false)
+                    ->columnSpanFull()
                     ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Get $get, Set $set) => $set('total_cost', round((float) $get('quantity') * (float) $get('unit_cost'), 2))),
+                    ->afterStateUpdated($recalcRestockTotal)
+                    ->helperText('How many units go to each branch. Add a row per branch. One payment below covers the full quantity.'),
                 TextInput::make('unit_cost')
                     ->label('Unit Cost')
                     ->required()
@@ -66,7 +99,7 @@ class StockPurchaseResource extends Resource
                     ->prefix($currency)
                     ->live(onBlur: true)
                     ->helperText('Cost per unit you paid for this restock')
-                    ->afterStateUpdated(fn (Get $get, Set $set) => $set('total_cost', round((float) $get('quantity') * (float) $get('unit_cost'), 2))),
+                    ->afterStateUpdated($recalcRestockTotal),
                 TextInput::make('sale_price')
                     ->label('New Sale Price')
                     ->required()
@@ -77,32 +110,18 @@ class StockPurchaseResource extends Resource
                 TextInput::make('total_cost')
                     ->label('Total Cost')
                     ->disabled()
-                    ->dehydrated()
+                    ->dehydrated(false)
                     ->prefix($currency)
                     ->default(0)
                     ->live()
-                    ->afterStateHydrated(function (Get $get, Set $set) {
-                        $qty = (float) ($get('quantity') ?: 0);
-                        $cost = (float) ($get('unit_cost') ?: 0);
-                        $set('total_cost', round($qty * $cost, 2));
-                    }),
+                    ->afterStateHydrated($recalcRestockTotal),
                 DatePicker::make('date')
                     ->required()
                     ->default(now()),
-                Select::make('branch_id')
-                    ->label('Branch')
-                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
-                    ->required()
-                    ->searchable()
-                    ->preload()
-                    ->live()
-                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false)
-                    ->dehydrated(),
                 Select::make('bank_account_id')
                     ->label('Pay From Account')
-                    ->options(fn (Get $get) => BankAccount::query()
-                        ->when($get('branch_id'), fn ($query, $branchId) => $query->where('branch_id', $branchId))
+                    ->options(fn () => BankAccount::query()
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
                         ->orderByDesc('is_default')
                         ->orderBy('name')
                         ->pluck('name', 'id'))
@@ -110,7 +129,7 @@ class StockPurchaseResource extends Resource
                     ->searchable()
                     ->preload()
                     ->default(fn () => BankAccount::getDefaultAccountForBranch(Branch::getDefaultBranch()?->id)?->id)
-                    ->helperText('The restock cost will be deducted from this account.'),
+                    ->helperText('One deduction for the total cost; stock is split across branches above.'),
                 TextInput::make('vendor')
                     ->maxLength(255)
                     ->placeholder('Supplier or vendor name'),

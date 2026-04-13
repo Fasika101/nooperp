@@ -62,7 +62,6 @@ class ProductCreationServiceTest extends TestCase
             'brand_option_id' => $brand->id,
             'color_option_id' => $color->id,
             'size_option_id' => $size->id,
-            'original_price' => 90,
             'cost_price' => 40,
             'price' => 75,
             'stock' => 5,
@@ -134,7 +133,6 @@ class ProductCreationServiceTest extends TestCase
             app(ProductCreationService::class)->create([
                 'name' => 'Premium Case',
                 'category_id' => $category->id,
-                'original_price' => 130,
                 'cost_price' => 50,
                 'price' => 110,
                 'stock' => 2,
@@ -194,7 +192,6 @@ class ProductCreationServiceTest extends TestCase
         $product = app(ProductCreationService::class)->create([
             'name' => 'Split Frame',
             'category_id' => $category->id,
-            'original_price' => 120,
             'cost_price' => 40,
             'price' => 99,
             'stock' => 5,

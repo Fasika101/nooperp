@@ -45,7 +45,7 @@ class StockPurchaseService
             }
 
             $oldStock = (int) $product->stock;
-            $oldCost = (float) ($product->cost_price ?? $product->original_price ?? 0);
+            $oldCost = (float) ($product->cost_price ?? 0);
 
             $purchases = [];
             foreach ($lines as $line) {
@@ -136,7 +136,7 @@ class StockPurchaseService
             $oldStock = (int) $product->stock;
             $newQty = (int) $purchase->quantity;
             $newCost = (float) $purchase->unit_cost;
-            $oldCost = (float) ($product->cost_price ?? $product->original_price ?? 0);
+            $oldCost = (float) ($product->cost_price ?? 0);
             $totalStock = $oldStock + $newQty;
 
             self::incrementBranchStockAfterPurchase($product, $branch->id, $newQty, $newCost, $oldCost);

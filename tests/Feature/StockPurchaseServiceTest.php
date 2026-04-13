@@ -45,7 +45,6 @@ class StockPurchaseServiceTest extends TestCase
             'name' => 'Classic Frame',
             'category_id' => $category->id,
             'price' => 100,
-            'original_price' => 95,
             'cost_price' => 80,
             'stock' => 2,
         ]);
@@ -132,7 +131,6 @@ class StockPurchaseServiceTest extends TestCase
             'name' => 'Blue Lens',
             'category_id' => $category->id,
             'price' => 80,
-            'original_price' => 75,
             'cost_price' => 50,
             'stock' => 4,
         ]);
