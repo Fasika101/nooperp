@@ -7,12 +7,11 @@ use App\Models\ProductOption;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\Alignment;
 use Filament\Tables;
 use Filament\Tables\Table;
 
@@ -51,18 +50,11 @@ class ProductOptionResource extends Resource
                     ->maxLength(255)
                     ->required()
                     ->visibleOn('edit'),
-                Repeater::make('option_values')
+                Textarea::make('option_values')
                     ->label('Values')
-                    ->simple(
-                        TextInput::make('value')
-                            ->maxLength(255)
-                            ->placeholder('Enter a value')
-                    )
-                    ->defaultItems(1)
-                    ->addActionLabel('Add another')
-                    ->addActionAlignment(Alignment::Start)
-                    ->reorderable(false)
-                    ->itemHeaders(false)
+                    ->placeholder('e.g. Red, Blue, Green')
+                    ->helperText('Separate values with commas or new lines. All are added at once.')
+                    ->rows(4)
                     ->columnSpanFull()
                     ->visibleOn('create'),
             ]);

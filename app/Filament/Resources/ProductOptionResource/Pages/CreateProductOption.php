@@ -25,14 +25,14 @@ class CreateProductOption extends CreateRecord
             ]);
         }
 
-        $raw = $data['option_values'] ?? [];
+        $raw = $data['option_values'] ?? '';
         unset($data['option_values']);
 
-        $names = ProductOption::normalizeNamesFromFragments(is_array($raw) ? $raw : []);
+        $names = ProductOption::parseBulkNames(is_string($raw) ? $raw : '');
 
         if ($names === []) {
             throw ValidationException::withMessages([
-                'option_values' => ['Add at least one value, or remove empty rows.'],
+                'option_values' => ['Enter at least one value (separate with commas or new lines).'],
             ]);
         }
 
