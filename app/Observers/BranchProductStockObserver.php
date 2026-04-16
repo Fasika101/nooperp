@@ -24,17 +24,19 @@ class BranchProductStockObserver
 
     protected function syncProductStock(BranchProductStock $branchProductStock): void
     {
-        $product = $branchProductStock->product()->first();
+        $variant = $branchProductStock->productVariant()->first();
 
-        if (! $product) {
+        if (! $variant) {
             return;
         }
 
+        $productId = (int) $variant->product_id;
+
         $totalStock = (int) BranchProductStock::query()
-            ->where('product_id', $product->id)
+            ->whereHas('productVariant', fn ($q) => $q->where('product_id', $productId))
             ->sum('quantity');
 
-        Product::query()->whereKey($product->id)->update([
+        Product::query()->whereKey($productId)->update([
             'stock' => $totalStock,
         ]);
     }

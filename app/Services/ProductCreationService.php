@@ -28,13 +28,15 @@ class ProductCreationService
         return DB::transaction(function () use ($data, $initialStock, $initialCost) {
             $sizeIds = Product::validatedOptionIdsForType((array) ($data['size_option_ids'] ?? []), ProductOption::TYPE_SIZE);
             $colorIds = Product::validatedOptionIdsForType((array) ($data['color_option_ids'] ?? []), ProductOption::TYPE_COLOR);
+            $selectedSizeId = $sizeIds[0] ?? self::nullableOptionId($data['size_option_id'] ?? null);
+            $selectedColorId = $colorIds[0] ?? self::nullableOptionId($data['color_option_id'] ?? null);
 
             $product = Product::query()->create([
                 'image' => $this->normalizeProductImage($data['image'] ?? null),
                 'name' => $data['name'],
                 'category_id' => $data['category_id'],
-                'size_option_id' => $sizeIds[0] ?? ($data['size_option_id'] ?? null),
-                'color_option_id' => $colorIds[0] ?? ($data['color_option_id'] ?? null),
+                'size_option_id' => $selectedSizeId,
+                'color_option_id' => $selectedColorId,
                 'gender_option_id' => $data['gender_option_id'] ?? null,
                 'material_option_id' => $data['material_option_id'] ?? null,
                 'shape_option_id' => $data['shape_option_id'] ?? null,
@@ -47,15 +49,47 @@ class ProductCreationService
                 'stock' => 0,
             ]);
 
+            $attachedOptionIds = array_values(array_unique(array_filter([
+                ...$sizeIds,
+                ...$colorIds,
+                $selectedSizeId,
+                $selectedColorId,
+            ])));
+
+            $product->attachedProductOptions()->sync($attachedOptionIds);
+
             if ($initialStock > 0 && $initialCost > 0) {
-                $lines = StockPurchaseService::mergeAllocationLines(
-                    (array) ($data['initial_stock_allocations'] ?? []),
-                );
+                $effectiveColorIds = $colorIds !== [] ? $colorIds : array_values(array_filter([$selectedColorId]));
+                $effectiveSizeIds = $sizeIds !== [] ? $sizeIds : array_values(array_filter([$selectedSizeId]));
+                $colorCount = count($effectiveColorIds);
+                $sizeCount = count($effectiveSizeIds);
+                $rawAllocations = (array) ($data['initial_stock_allocations'] ?? []);
+
+                if ($colorCount === 1) {
+                    foreach ($rawAllocations as &$row) {
+                        $row['color_option_id'] = $effectiveColorIds[0];
+                    }
+                    unset($row);
+                }
+
+                if ($sizeCount === 1) {
+                    foreach ($rawAllocations as &$row) {
+                        $row['size_option_id'] = $effectiveSizeIds[0];
+                    }
+                    unset($row);
+                }
+
+                $lines = StockPurchaseService::mergeAllocationLines($rawAllocations);
 
                 if ($lines === [] && ! empty($data['initial_stock_branch_id'])) {
-                    $lines = [
-                        ['branch_id' => (int) $data['initial_stock_branch_id'], 'quantity' => $initialStock],
-                    ];
+                    $lines = StockPurchaseService::mergeAllocationLines([
+                        [
+                            'branch_id' => (int) $data['initial_stock_branch_id'],
+                            'quantity' => $initialStock,
+                            'color_option_id' => $colorCount === 1 ? $effectiveColorIds[0] : null,
+                            'size_option_id' => $sizeCount === 1 ? $effectiveSizeIds[0] : null,
+                        ],
+                    ]);
                 }
 
                 if ($lines === []) {
@@ -64,10 +98,40 @@ class ProductCreationService
                     ]);
                 }
 
+                if ($colorCount >= 2) {
+                    foreach ($lines as $line) {
+                        if (empty($line['color_option_id'])) {
+                            throw ValidationException::withMessages([
+                                'initial_stock_allocations' => ['When this product has multiple colors, each row must include a color.'],
+                            ]);
+                        }
+                        if (! in_array((int) $line['color_option_id'], $effectiveColorIds, true)) {
+                            throw ValidationException::withMessages([
+                                'initial_stock_allocations' => ['Each color must be one of the colors selected for this product.'],
+                            ]);
+                        }
+                    }
+                }
+
+                if ($sizeCount >= 2) {
+                    foreach ($lines as $line) {
+                        if (empty($line['size_option_id'])) {
+                            throw ValidationException::withMessages([
+                                'initial_stock_allocations' => ['When this product has multiple sizes, each row must include a size.'],
+                            ]);
+                        }
+                        if (! in_array((int) $line['size_option_id'], $effectiveSizeIds, true)) {
+                            throw ValidationException::withMessages([
+                                'initial_stock_allocations' => ['Each size must be one of the sizes selected for this product.'],
+                            ]);
+                        }
+                    }
+                }
+
                 $allocated = array_sum(array_column($lines, 'quantity'));
                 if ($allocated !== $initialStock) {
                     throw ValidationException::withMessages([
-                        'initial_stock_allocations' => ["Quantities per branch must add up to Stock ({$initialStock}); they add up to {$allocated}."],
+                        'initial_stock_allocations' => ["Quantities per branch (and color/size) must add up to Stock ({$initialStock}); they add up to {$allocated}."],
                     ]);
                 }
 
@@ -82,10 +146,19 @@ class ProductCreationService
                 ]);
             }
 
-            $product->attachedProductOptions()->sync(array_values(array_unique(array_merge($sizeIds, $colorIds))));
-
             return $product->fresh();
         });
+    }
+
+    private static function nullableOptionId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $id = (int) $value;
+
+        return $id > 0 ? $id : null;
     }
 
     /**

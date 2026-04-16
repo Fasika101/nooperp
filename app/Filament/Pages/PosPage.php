@@ -16,6 +16,7 @@ use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\Product;
 use App\Models\ProductOption;
+use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Models\TaxType;
 use App\Services\PosTelegramService;
@@ -262,14 +263,6 @@ class PosPage extends Page
             return;
         }
 
-        $availableStock = $this->getAvailableStockForProduct($product->id);
-        if ($availableStock <= 0) {
-            Notification::make()->danger()->title('Product out of stock')->send();
-            $this->cancelVariantModal();
-
-            return;
-        }
-
         $colors = $product->availableColorOptions();
         $sizes = $product->availableSizeOptions();
 
@@ -392,7 +385,7 @@ class PosPage extends Page
 
     protected function pushProductLineToCart(Product $product, ?int $colorOptionId, ?int $sizeOptionId): void
     {
-        $availableStock = $this->getAvailableStockForProduct($product->id);
+        $availableStock = $this->getAvailableStockForProduct($product->id, $colorOptionId, $sizeOptionId);
         if ($availableStock <= 0) {
             Notification::make()
                 ->danger()
@@ -554,7 +547,11 @@ class PosPage extends Page
             return;
         }
 
-        $availableStock = $this->getAvailableStockForProduct($this->cart[$index]['product_id']);
+        $availableStock = $this->getAvailableStockForProduct(
+            $this->cart[$index]['product_id'],
+            isset($this->cart[$index]['color_option_id']) ? (int) $this->cart[$index]['color_option_id'] : null,
+            isset($this->cart[$index]['size_option_id']) ? (int) $this->cart[$index]['size_option_id'] : null,
+        );
         if ($availableStock > 0 && $quantity > $availableStock) {
             $quantity = $availableStock;
         }
@@ -964,9 +961,40 @@ class PosPage extends Page
                     $product = Product::query()->whereKey($item['product_id'])->first();
 
                     if ($product && ! $product->is_service) {
+                        $colorOptionId = isset($item['color_option_id']) ? (int) $item['color_option_id'] : null;
+                        if ($colorOptionId !== null && $colorOptionId <= 0) {
+                            $colorOptionId = null;
+                        }
+                        $sizeOptionId = isset($item['size_option_id']) ? (int) $item['size_option_id'] : null;
+                        if ($sizeOptionId !== null && $sizeOptionId <= 0) {
+                            $sizeOptionId = null;
+                        }
+
+                        $variant = ProductVariant::query()
+                            ->where('product_id', $item['product_id'])
+                            ->where(function ($q) use ($colorOptionId) {
+                                if ($colorOptionId !== null) {
+                                    $q->where('color_option_id', $colorOptionId);
+                                } else {
+                                    $q->whereNull('color_option_id');
+                                }
+                            })
+                            ->where(function ($q) use ($sizeOptionId) {
+                                if ($sizeOptionId !== null) {
+                                    $q->where('size_option_id', $sizeOptionId);
+                                } else {
+                                    $q->whereNull('size_option_id');
+                                }
+                            })
+                            ->first();
+
+                        if (! $variant) {
+                            throw new \RuntimeException("Insufficient stock for {$item['name']} in the selected branch.");
+                        }
+
                         $branchStock = BranchProductStock::query()
                             ->where('branch_id', $branchId)
-                            ->where('product_id', $item['product_id'])
+                            ->where('product_variant_id', $variant->id)
                             ->lockForUpdate()
                             ->first();
 
@@ -1473,7 +1501,7 @@ class PosPage extends Page
         return ['fi-page-pos'];
     }
 
-    protected function getAvailableStockForProduct(int $productId): int
+    protected function getAvailableStockForProduct(int $productId, ?int $colorOptionId = null, ?int $sizeOptionId = null): int
     {
         if (! $this->branchId) {
             return 0;
@@ -1481,8 +1509,18 @@ class PosPage extends Page
 
         return (int) BranchProductStock::query()
             ->where('branch_id', $this->branchId)
-            ->where('product_id', $productId)
-            ->value('quantity');
+            ->whereHas('productVariant', function ($q) use ($productId, $colorOptionId, $sizeOptionId) {
+                $q->where('product_id', $productId);
+                if ($colorOptionId !== null) {
+                    $q->where('color_option_id', $colorOptionId);
+                } elseif ($sizeOptionId !== null) {
+                    $q->whereNull('color_option_id');
+                }
+                if ($sizeOptionId !== null) {
+                    $q->where('size_option_id', $sizeOptionId);
+                }
+            })
+            ->sum('quantity');
     }
 
     public function isBranchLocked(): bool

@@ -9,6 +9,7 @@ use App\Models\BranchProductStock;
 use App\Models\BranchStockTransfer;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\User;
 use App\Services\BranchStockTransferService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,16 +45,18 @@ class BranchStockTransferServiceTest extends TestCase
             'cost_price' => 20,
         ]);
 
+        $variant = ProductVariant::findOrCreateForProduct($product->id, null, null);
+
         BranchProductStock::query()->create([
             'branch_id' => $from->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'quantity' => 10,
             'avg_cost' => 20,
         ]);
 
         BranchProductStock::query()->create([
             'branch_id' => $to->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'quantity' => 2,
             'avg_cost' => 30,
         ]);
@@ -72,8 +75,8 @@ class BranchStockTransferServiceTest extends TestCase
         $this->assertInstanceOf(BranchStockTransfer::class, $record);
         $this->assertSame(4, $record->quantity);
 
-        $this->assertSame(6, (int) BranchProductStock::query()->where('branch_id', $from->id)->where('product_id', $product->id)->value('quantity'));
-        $this->assertSame(6, (int) BranchProductStock::query()->where('branch_id', $to->id)->where('product_id', $product->id)->value('quantity'));
+        $this->assertSame(6, (int) BranchProductStock::query()->where('branch_id', $from->id)->where('product_variant_id', $variant->id)->value('quantity'));
+        $this->assertSame(6, (int) BranchProductStock::query()->where('branch_id', $to->id)->where('product_variant_id', $variant->id)->value('quantity'));
 
         $product->refresh();
         $this->assertSame(12, $product->stock);
@@ -104,9 +107,11 @@ class BranchStockTransferServiceTest extends TestCase
             'cost_price' => 5,
         ]);
 
+        $variant = ProductVariant::findOrCreateForProduct($product->id, null, null);
+
         BranchProductStock::query()->create([
             'branch_id' => $from->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'quantity' => 1,
             'avg_cost' => 5,
         ]);

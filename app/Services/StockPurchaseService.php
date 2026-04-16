@@ -8,6 +8,7 @@ use App\Models\BranchProductStock;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\StockPurchase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,7 +18,7 @@ class StockPurchaseService
     /**
      * Split one purchase across branches (single bank charge, one expense). One stock_purchases row per branch; only the first is linked to the expense.
      *
-     * @param  array{product_id: int, unit_cost: float, sale_price: float, bank_account_id: int, date: string, vendor?: ?string, lines: list<array{branch_id: int, quantity: int}>}  $data
+     * @param  array{product_id: int, unit_cost: float, sale_price: float, bank_account_id: int, date: string, vendor?: ?string, lines: list<array{branch_id: int, quantity: int, color_option_id?: ?int, size_option_id?: ?int}>}  $data
      * @return list<StockPurchase>
      */
     public function createDistributed(array $data): array
@@ -60,8 +61,17 @@ class StockPurchaseService
                 $qty = (int) $line['quantity'];
                 $lineTotal = round($qty * $unitCost, 2);
 
+                $colorOptionId = $line['color_option_id'] ?? null;
+                $sizeOptionId = $line['size_option_id'] ?? null;
+                $variant = ProductVariant::findOrCreateForProduct(
+                    $product->id,
+                    $colorOptionId !== null && $colorOptionId > 0 ? (int) $colorOptionId : null,
+                    $sizeOptionId !== null && $sizeOptionId > 0 ? (int) $sizeOptionId : null,
+                );
+
                 $purchase = StockPurchase::query()->create([
                     'product_id' => $product->id,
+                    'product_variant_id' => $variant->id,
                     'branch_id' => $branch->id,
                     'quantity' => $qty,
                     'unit_cost' => $unitCost,
@@ -73,7 +83,7 @@ class StockPurchaseService
                     'expense_id' => null,
                 ]);
 
-                self::incrementBranchStockAfterPurchase($product, $branch->id, $qty, $unitCost, $oldCost);
+                self::incrementBranchStockAfterPurchase($product, $branch->id, $qty, $unitCost, $oldCost, $variant);
 
                 $purchases[] = $purchase;
             }
@@ -138,7 +148,22 @@ class StockPurchaseService
                 ]);
             }
 
-            $purchase = StockPurchase::query()->create($data);
+            $colorOptionId = isset($data['color_option_id']) ? (int) $data['color_option_id'] : null;
+            if ($colorOptionId !== null && $colorOptionId <= 0) {
+                $colorOptionId = null;
+            }
+            $sizeOptionId = isset($data['size_option_id']) ? (int) $data['size_option_id'] : null;
+            if ($sizeOptionId !== null && $sizeOptionId <= 0) {
+                $sizeOptionId = null;
+            }
+
+            $variant = ProductVariant::findOrCreateForProduct($product->id, $colorOptionId, $sizeOptionId);
+
+            $payload = $data;
+            $payload['product_variant_id'] = $variant->id;
+            unset($payload['color_option_id'], $payload['size_option_id']);
+
+            $purchase = StockPurchase::query()->create($payload);
 
             $oldStock = (int) $product->stock;
             $newQty = (int) $purchase->quantity;
@@ -146,7 +171,7 @@ class StockPurchaseService
             $oldCost = (float) ($product->cost_price ?? 0);
             $totalStock = $oldStock + $newQty;
 
-            self::incrementBranchStockAfterPurchase($product, $branch->id, $newQty, $newCost, $oldCost);
+            self::incrementBranchStockAfterPurchase($product, $branch->id, $newQty, $newCost, $oldCost, $variant);
 
             $product->update([
                 'cost_price' => $totalStock > 0
@@ -174,13 +199,13 @@ class StockPurchaseService
                 'expense_id' => $expense->id,
             ]);
 
-            return $purchase->fresh(['product', 'expense', 'bankAccount', 'branch']);
+            return $purchase->fresh(['product', 'expense', 'bankAccount', 'branch', 'productVariant']);
         });
     }
 
     /**
-     * @param  list<array{branch_id?: mixed, quantity?: mixed}>  $lines
-     * @return list<array{branch_id: int, quantity: int}>
+     * @param  list<array{branch_id?: mixed, quantity?: mixed, color_option_id?: mixed, size_option_id?: mixed}>  $lines
+     * @return list<array{branch_id: int, quantity: int, color_option_id: ?int, size_option_id: ?int}>
      */
     public static function mergeAllocationLines(array $lines): array
     {
@@ -191,17 +216,41 @@ class StockPurchaseService
             if ($bid <= 0 || $qty <= 0) {
                 continue;
             }
-            $merged[$bid] = ($merged[$bid] ?? 0) + $qty;
+            $cidRaw = $line['color_option_id'] ?? null;
+            $cid = null;
+            if ($cidRaw !== null && $cidRaw !== '') {
+                $cid = (int) $cidRaw;
+                if ($cid <= 0) {
+                    $cid = null;
+                }
+            }
+            $sidRaw = $line['size_option_id'] ?? null;
+            $sid = null;
+            if ($sidRaw !== null && $sidRaw !== '') {
+                $sid = (int) $sidRaw;
+                if ($sid <= 0) {
+                    $sid = null;
+                }
+            }
+            $key = $bid.'-'.($cid ?? '0').'-'.($sid ?? '0');
+            if (! isset($merged[$key])) {
+                $merged[$key] = ['branch_id' => $bid, 'quantity' => 0, 'color_option_id' => $cid, 'size_option_id' => $sid];
+            }
+            $merged[$key]['quantity'] += $qty;
         }
 
-        return collect($merged)->map(fn (int $qty, int $bid) => ['branch_id' => $bid, 'quantity' => $qty])->values()->all();
+        return array_values($merged);
     }
 
-    protected static function incrementBranchStockAfterPurchase(Product $product, int $branchId, int $newQty, float $newCost, float $fallbackCost): void
+    protected static function incrementBranchStockAfterPurchase(Product $product, int $branchId, int $newQty, float $newCost, float $fallbackCost, ProductVariant $variant): void
     {
+        if ($newQty <= 0) {
+            return;
+        }
+
         $branchStock = BranchProductStock::query()->firstOrNew([
             'branch_id' => $branchId,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
         ]);
 
         $existingBranchQty = (int) ($branchStock->exists ? $branchStock->quantity : 0);

@@ -30,6 +30,8 @@ class ViewProduct extends ViewRecord
                 'shape',
                 'attachedProductOptions',
                 'branchStocks.branch',
+                'branchStocks.productVariant.colorOption',
+                'branchStocks.productVariant.sizeOption',
             ]);
         });
 

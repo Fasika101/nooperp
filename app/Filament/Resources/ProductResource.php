@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\BankAccount;
 use App\Models\Branch;
+use App\Models\BranchProductStock;
 use App\Models\Product;
 use App\Models\ProductOption;
 use App\Models\Setting;
@@ -25,6 +26,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -42,12 +44,13 @@ class ProductResource extends Resource
         $currency = Setting::getDefaultCurrency();
 
         return $schema
+            ->columns(1)
             ->components([
                 Section::make('Product')
                     ->schema([
                         ImageEntry::make('image')
                             ->disk('public')
-                            ->height(220)
+                            ->height(180)
                             ->columnSpanFull()
                             ->defaultImageUrl('https://ui-avatars.com/api/?name=Product&color=7F9CF5&background=EBF4FF'),
                         TextEntry::make('name')
@@ -144,6 +147,10 @@ class ProductResource extends Resource
                             ->schema([
                                 TextEntry::make('branch.name')
                                     ->label('Branch'),
+                                TextEntry::make('productVariant')
+                                    ->label('Variant')
+                                    ->formatStateUsing(fn ($state, BranchProductStock $record): string => $record->productVariant?->label() ?? '—')
+                                    ->placeholder('—'),
                                 TextEntry::make('quantity')
                                     ->label('Qty'),
                                 TextEntry::make('avg_cost')
@@ -151,7 +158,7 @@ class ProductResource extends Resource
                                     ->money($currency)
                                     ->placeholder('—'),
                             ])
-                            ->columns(3),
+                            ->columns(4),
                     ])
                     ->columns(2),
                 Section::make('Record')
@@ -202,14 +209,146 @@ class ProductResource extends Resource
                     ->searchable()
                     ->options(fn () => ProductOption::forType(ProductOption::TYPE_SIZE)->orderBy('name')->pluck('name', 'id'))
                     ->helperText('Select every size this product comes in. At POS, staff pick one size per sale when more than one is listed.')
-                    ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_SIZE)),
+                    ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_SIZE))
+                    ->live()
+                    ->afterStateUpdated(function ($state, Set $set): void {
+                        $set('size_stock_quantities', []);
+                        $set('variant_stock_quantities', []);
+                        $ids = array_filter(array_map('intval', (array) $state));
+                        if (count($ids) > 1) {
+                            $set('stock', 0);
+                        }
+                    }),
                 Select::make('color_option_ids')
                     ->label('Colors')
                     ->multiple()
                     ->searchable()
                     ->options(fn () => ProductOption::forType(ProductOption::TYPE_COLOR)->orderBy('name')->pluck('name', 'id'))
                     ->helperText('Select every color option. At POS, staff pick one color when more than one is listed.')
-                    ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_COLOR)),
+                    ->visible(fn (): bool => Setting::isProductOptionFieldEnabled(ProductOption::TYPE_COLOR))
+                    ->live()
+                    ->afterStateUpdated(function ($state, Set $set): void {
+                        $set('color_stock_quantities', []);
+                        $set('variant_stock_quantities', []);
+                        $ids = array_filter(array_map('intval', (array) $state));
+                        if (count($ids) > 1) {
+                            $set('stock', 0);
+                        }
+                    }),
+                Repeater::make('color_stock_quantities')
+                    ->label('Units per color')
+                    ->schema([
+                        Select::make('color_option_id')
+                            ->label('Color')
+                            ->options(function (Get $get) {
+                                $ids = array_filter(array_map('intval', (array) ($get('../../color_option_ids') ?? [])));
+
+                                return $ids === []
+                                    ? []
+                                    : ProductOption::query()->whereIn('id', $ids)->orderBy('name')->pluck('name', 'id')->all();
+                            })
+                            ->required()
+                            ->searchable()
+                            ->preload(),
+                        TextInput::make('quantity')
+                            ->label('Quantity')
+                            ->numeric()
+                            ->minValue(1)
+                            ->required()
+                            ->live(onBlur: true),
+                    ])
+                    ->live()
+                    ->afterStateUpdated(function ($state, Set $set): void {
+                        $sum = (int) collect($state ?? [])->sum(fn ($row) => (int) ($row['quantity'] ?? 0));
+                        $set('stock', $sum);
+                    })
+                    ->addActionLabel('Add color quantity')
+                    ->reorderable(false)
+                    ->columnSpanFull()
+                    ->visible(fn (string $operation, Get $get): bool => $operation === 'create'
+                        && count((array) ($get('color_option_ids') ?? [])) > 1
+                        && count((array) ($get('size_option_ids') ?? [])) <= 1)
+                    ->helperText('Pick a color, enter how many units, then add another row for the next color. Total stock is calculated below.'),
+                Repeater::make('size_stock_quantities')
+                    ->label('Units per size')
+                    ->schema([
+                        Select::make('size_option_id')
+                            ->label('Size')
+                            ->options(function (Get $get) {
+                                $ids = array_filter(array_map('intval', (array) ($get('../../size_option_ids') ?? [])));
+
+                                return $ids === []
+                                    ? []
+                                    : ProductOption::query()->whereIn('id', $ids)->orderBy('name')->pluck('name', 'id')->all();
+                            })
+                            ->required()
+                            ->searchable()
+                            ->preload(),
+                        TextInput::make('quantity')
+                            ->label('Quantity')
+                            ->numeric()
+                            ->minValue(1)
+                            ->required()
+                            ->live(onBlur: true),
+                    ])
+                    ->live()
+                    ->afterStateUpdated(function ($state, Set $set): void {
+                        $sum = (int) collect($state ?? [])->sum(fn ($row) => (int) ($row['quantity'] ?? 0));
+                        $set('stock', $sum);
+                    })
+                    ->addActionLabel('Add size quantity')
+                    ->reorderable(false)
+                    ->columnSpanFull()
+                    ->visible(fn (string $operation, Get $get): bool => $operation === 'create'
+                        && count((array) ($get('size_option_ids') ?? [])) > 1
+                        && count((array) ($get('color_option_ids') ?? [])) <= 1)
+                    ->helperText('Pick a size, enter how many units, then add another row for the next size. Total stock is calculated below.'),
+                Repeater::make('variant_stock_quantities')
+                    ->label('Units per color and size')
+                    ->schema([
+                        Select::make('color_option_id')
+                            ->label('Color')
+                            ->options(function (Get $get) {
+                                $ids = array_filter(array_map('intval', (array) ($get('../../color_option_ids') ?? [])));
+
+                                return $ids === []
+                                    ? []
+                                    : ProductOption::query()->whereIn('id', $ids)->orderBy('name')->pluck('name', 'id')->all();
+                            })
+                            ->required()
+                            ->searchable()
+                            ->preload(),
+                        Select::make('size_option_id')
+                            ->label('Size')
+                            ->options(function (Get $get) {
+                                $ids = array_filter(array_map('intval', (array) ($get('../../size_option_ids') ?? [])));
+
+                                return $ids === []
+                                    ? []
+                                    : ProductOption::query()->whereIn('id', $ids)->orderBy('name')->pluck('name', 'id')->all();
+                            })
+                            ->required()
+                            ->searchable()
+                            ->preload(),
+                        TextInput::make('quantity')
+                            ->label('Quantity')
+                            ->numeric()
+                            ->minValue(1)
+                            ->required()
+                            ->live(onBlur: true),
+                    ])
+                    ->live()
+                    ->afterStateUpdated(function ($state, Set $set): void {
+                        $sum = (int) collect($state ?? [])->sum(fn ($row) => (int) ($row['quantity'] ?? 0));
+                        $set('stock', $sum);
+                    })
+                    ->addActionLabel('Add color & size quantity')
+                    ->reorderable(false)
+                    ->columnSpanFull()
+                    ->visible(fn (string $operation, Get $get): bool => $operation === 'create'
+                        && count((array) ($get('color_option_ids') ?? [])) > 1
+                        && count((array) ($get('size_option_ids') ?? [])) > 1)
+                    ->helperText('Enter units for each color and size combination. Total stock is calculated below.'),
                 Select::make('gender_option_id')
                     ->label('Gender')
                     ->relationship('gender', 'name', fn ($query) => $query->forType(ProductOption::TYPE_GENDER)->orderBy('name'))
@@ -276,11 +415,34 @@ class ProductResource extends Resource
                     ->minValue(0)
                     ->helperText('Actual selling price at POS'),
                 TextInput::make('stock')
+                    ->label('Total stock')
                     ->required()
                     ->numeric()
                     ->default(0)
                     ->minValue(0)
-                    ->live(onBlur: true),
+                    ->live(onBlur: true)
+                    ->disabled(fn (string $operation, Get $get): bool => $operation === 'create'
+                        && (count((array) ($get('color_option_ids') ?? [])) > 1
+                            || count((array) ($get('size_option_ids') ?? [])) > 1))
+                    ->dehydrated(true)
+                    ->helperText(function (string $operation, Get $get): ?string {
+                        if ($operation !== 'create') {
+                            return null;
+                        }
+                        $colorN = count((array) ($get('color_option_ids') ?? []));
+                        $sizeN = count((array) ($get('size_option_ids') ?? []));
+                        if ($colorN > 1 && $sizeN > 1) {
+                            return 'This total is the sum of “Units per color and size” above.';
+                        }
+                        if ($colorN > 1) {
+                            return 'This total is the sum of “Units per color” above.';
+                        }
+                        if ($sizeN > 1) {
+                            return 'This total is the sum of “Units per size” above.';
+                        }
+
+                        return null;
+                    }),
                 Repeater::make('initial_stock_allocations')
                     ->label('Split initial stock by branch')
                     ->schema([
@@ -297,6 +459,32 @@ class ProductResource extends Resource
                             ->preload()
                             ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
                             ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false),
+                        Select::make('color_option_id')
+                            ->label('Color')
+                            ->options(function (Get $get) {
+                                $ids = array_filter(array_map('intval', (array) ($get('../../color_option_ids') ?? [])));
+
+                                return $ids === []
+                                    ? []
+                                    : ProductOption::query()->whereIn('id', $ids)->orderBy('name')->pluck('name', 'id')->all();
+                            })
+                            ->searchable()
+                            ->preload()
+                            ->visible(fn (Get $get): bool => count((array) ($get('../../color_option_ids') ?? [])) > 1)
+                            ->required(fn (Get $get): bool => count((array) ($get('../../color_option_ids') ?? [])) > 1),
+                        Select::make('size_option_id')
+                            ->label('Size')
+                            ->options(function (Get $get) {
+                                $ids = array_filter(array_map('intval', (array) ($get('../../size_option_ids') ?? [])));
+
+                                return $ids === []
+                                    ? []
+                                    : ProductOption::query()->whereIn('id', $ids)->orderBy('name')->pluck('name', 'id')->all();
+                            })
+                            ->searchable()
+                            ->preload()
+                            ->visible(fn (Get $get): bool => count((array) ($get('../../size_option_ids') ?? [])) > 1)
+                            ->required(fn (Get $get): bool => count((array) ($get('../../size_option_ids') ?? [])) > 1),
                         TextInput::make('quantity')
                             ->label('Units')
                             ->numeric()
@@ -308,7 +496,7 @@ class ProductResource extends Resource
                     ->reorderable(false)
                     ->columnSpanFull()
                     ->visible(fn (string $operation, Get $get): bool => $operation === 'create' && (int) ($get('stock') ?? 0) > 0)
-                    ->helperText('Assign how many units go to each branch. The sum must equal Stock above.'),
+                    ->helperText('Assign how many units go to each branch. When multiple colors or sizes are selected, pick color and size on each row. The sum must equal Stock above.'),
                 Select::make('initial_stock_bank_account_id')
                     ->label('Pay Initial Stock From')
                     ->options(fn () => BankAccount::query()

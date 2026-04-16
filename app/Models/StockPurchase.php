@@ -9,6 +9,7 @@ class StockPurchase extends Model
 {
     protected $fillable = [
         'product_id',
+        'product_variant_id',
         'branch_id',
         'quantity',
         'unit_cost',
@@ -33,6 +34,11 @@ class StockPurchase extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
     public function branch(): BelongsTo

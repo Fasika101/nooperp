@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\Expense;
 use App\Models\Product;
 use App\Models\ProductOption;
+use App\Models\ProductVariant;
 use App\Models\StockPurchase;
 use App\Services\ProductCreationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -92,9 +93,15 @@ class ProductCreationServiceTest extends TestCase
         $this->assertSame($branch->id, $expense->branch_id);
         $this->assertSame($account->id, $expense->bank_account_id);
 
+        $expectedVariant = ProductVariant::query()
+            ->where('product_id', $product->id)
+            ->where('color_option_id', $color->id)
+            ->where('size_option_id', $size->id)
+            ->firstOrFail();
+
         $this->assertDatabaseHas('branch_product_stocks', [
             'branch_id' => $branch->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $expectedVariant->id,
             'quantity' => 5,
         ]);
 
@@ -218,14 +225,20 @@ class ProductCreationServiceTest extends TestCase
         $this->assertCount(1, $linkedExpenseIds);
         $this->assertSame(200.0, (float) Expense::query()->firstOrFail()->amount);
 
+        $defaultVariant = ProductVariant::query()
+            ->where('product_id', $product->id)
+            ->whereNull('color_option_id')
+            ->whereNull('size_option_id')
+            ->firstOrFail();
+
         $this->assertDatabaseHas('branch_product_stocks', [
             'branch_id' => $branchA->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $defaultVariant->id,
             'quantity' => 2,
         ]);
         $this->assertDatabaseHas('branch_product_stocks', [
             'branch_id' => $branchB->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $defaultVariant->id,
             'quantity' => 3,
         ]);
     }

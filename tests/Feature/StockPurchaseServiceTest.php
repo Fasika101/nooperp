@@ -9,6 +9,7 @@ use App\Models\BranchProductStock;
 use App\Models\Category;
 use App\Models\Expense;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\StockPurchase;
 use App\Services\StockPurchaseService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -49,9 +50,11 @@ class StockPurchaseServiceTest extends TestCase
             'stock' => 2,
         ]);
 
+        $variant = ProductVariant::findOrCreateForProduct($product->id, null, null);
+
         BranchProductStock::query()->create([
             'branch_id' => $branch->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'quantity' => 2,
             'avg_cost' => 80,
         ]);
@@ -90,7 +93,7 @@ class StockPurchaseServiceTest extends TestCase
 
         $this->assertDatabaseHas('branch_product_stocks', [
             'branch_id' => $branch->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'quantity' => 5,
         ]);
 
@@ -135,9 +138,11 @@ class StockPurchaseServiceTest extends TestCase
             'stock' => 4,
         ]);
 
+        $variant = ProductVariant::findOrCreateForProduct($product->id, null, null);
+
         BranchProductStock::query()->create([
             'branch_id' => $branch->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'quantity' => 4,
             'avg_cost' => 50,
         ]);
@@ -173,7 +178,7 @@ class StockPurchaseServiceTest extends TestCase
         $this->assertDatabaseCount('bank_transactions', 0);
         $this->assertDatabaseHas('branch_product_stocks', [
             'branch_id' => $branch->id,
-            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'quantity' => 4,
         ]);
     }

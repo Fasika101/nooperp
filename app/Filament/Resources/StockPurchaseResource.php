@@ -83,6 +83,40 @@ class StockPurchaseResource extends Resource
                             ->numeric()
                             ->minValue(1)
                             ->required(),
+                        Select::make('color_option_id')
+                            ->label('Color')
+                            ->options(function (Get $get) {
+                                $pid = self::resolvedProductIdFromForm($get);
+                                if ($pid <= 0) {
+                                    return [];
+                                }
+                                $product = Product::query()->find($pid);
+
+                                return $product
+                                    ? $product->availableColorOptions()->pluck('name', 'id')->all()
+                                    : [];
+                            })
+                            ->searchable()
+                            ->preload()
+                            ->visible(fn (Get $get): bool => self::productHasMultipleColors(self::resolvedProductIdFromForm($get)))
+                            ->required(fn (Get $get): bool => self::productHasMultipleColors(self::resolvedProductIdFromForm($get))),
+                        Select::make('size_option_id')
+                            ->label('Size')
+                            ->options(function (Get $get) {
+                                $pid = self::resolvedProductIdFromForm($get);
+                                if ($pid <= 0) {
+                                    return [];
+                                }
+                                $product = Product::query()->find($pid);
+
+                                return $product
+                                    ? $product->availableSizeOptions()->pluck('name', 'id')->all()
+                                    : [];
+                            })
+                            ->searchable()
+                            ->preload()
+                            ->visible(fn (Get $get): bool => self::productHasMultipleSizes(self::resolvedProductIdFromForm($get)))
+                            ->required(fn (Get $get): bool => self::productHasMultipleSizes(self::resolvedProductIdFromForm($get))),
                     ])
                     ->defaultItems(1)
                     ->addActionLabel('Add branch')
@@ -90,7 +124,7 @@ class StockPurchaseResource extends Resource
                     ->columnSpanFull()
                     ->live(onBlur: true)
                     ->afterStateUpdated($recalcRestockTotal)
-                    ->helperText('How many units go to each branch. Add a row per branch. One payment below covers the full quantity.'),
+                    ->helperText('How many units go to each branch and variant. Add rows as needed. One payment below covers the full quantity.'),
                 TextInput::make('unit_cost')
                     ->label('Unit Cost')
                     ->required()
@@ -160,6 +194,10 @@ class StockPurchaseResource extends Resource
                     ->label('Product')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('product_variant_id')
+                    ->label('Variant')
+                    ->formatStateUsing(fn ($state, StockPurchase $record): string => $record->productVariant?->label() ?? '—')
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('branch.name')
                     ->label('Branch')
                     ->placeholder('—')
@@ -211,7 +249,7 @@ class StockPurchaseResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
+        $query = parent::getEloquentQuery()->with(['productVariant.colorOption', 'productVariant.sizeOption']);
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
@@ -229,5 +267,32 @@ class StockPurchaseResource extends Resource
     public static function canDelete($record): bool
     {
         return false;
+    }
+
+    protected static function resolvedProductIdFromForm(Get $get): int
+    {
+        return (int) ($get('product_id') ?? $get('../../product_id') ?? 0);
+    }
+
+    protected static function productHasMultipleColors(int $productId): bool
+    {
+        if ($productId <= 0) {
+            return false;
+        }
+
+        $product = Product::query()->find($productId);
+
+        return $product && $product->availableColorOptions()->count() > 1;
+    }
+
+    protected static function productHasMultipleSizes(int $productId): bool
+    {
+        if ($productId <= 0) {
+            return false;
+        }
+
+        $product = Product::query()->find($productId);
+
+        return $product && $product->availableSizeOptions()->count() > 1;
     }
 }

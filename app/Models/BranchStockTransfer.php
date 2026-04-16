@@ -11,6 +11,7 @@ class BranchStockTransfer extends Model
 {
     protected $fillable = [
         'product_id',
+        'product_variant_id',
         'from_branch_id',
         'to_branch_id',
         'quantity',
@@ -28,6 +29,11 @@ class BranchStockTransfer extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
     public function fromBranch(): BelongsTo

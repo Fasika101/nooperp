@@ -22,7 +22,9 @@ class CreateProduct extends CreateRecord
      */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        return $this->mergeProductImageFromFormState($data);
+        $data = $this->mergeProductImageFromFormState($data);
+
+        return $this->applyStockFromVariantQuantities($data);
     }
 
     protected function handleRecordCreation(array $data): Model
@@ -71,6 +73,33 @@ class CreateProduct extends CreateRecord
                 break;
             }
         }
+
+        return $data;
+    }
+
+    /**
+     * Multi-color / multi-size products: total stock is the sum of the matching repeater rows (stock is read-only in the UI).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function applyStockFromVariantQuantities(array $data): array
+    {
+        $colorIds = array_values(array_filter(array_map('intval', (array) ($data['color_option_ids'] ?? []))));
+        $sizeIds = array_values(array_filter(array_map('intval', (array) ($data['size_option_ids'] ?? []))));
+
+        $multiColor = count($colorIds) > 1;
+        $multiSize = count($sizeIds) > 1;
+
+        if ($multiColor && $multiSize) {
+            $data['stock'] = (int) collect($data['variant_stock_quantities'] ?? [])->sum(fn ($row) => (int) ($row['quantity'] ?? 0));
+        } elseif ($multiColor) {
+            $data['stock'] = (int) collect($data['color_stock_quantities'] ?? [])->sum(fn ($row) => (int) ($row['quantity'] ?? 0));
+        } elseif ($multiSize) {
+            $data['stock'] = (int) collect($data['size_stock_quantities'] ?? [])->sum(fn ($row) => (int) ($row['quantity'] ?? 0));
+        }
+
+        unset($data['color_stock_quantities'], $data['size_stock_quantities'], $data['variant_stock_quantities']);
 
         return $data;
     }
