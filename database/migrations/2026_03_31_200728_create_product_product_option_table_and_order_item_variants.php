@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Migration\DropsForeignKeysSafely;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    use DropsForeignKeysSafely;
+
     public function up(): void
     {
         Schema::create('product_product_option', function (Blueprint $table) {
@@ -46,9 +49,9 @@ return new class extends Migration
 
     public function down(): void
     {
+        $this->dropForeignKeyIfExists('order_items', 'size_option_id');
+        $this->dropForeignKeyIfExists('order_items', 'color_option_id');
         Schema::table('order_items', function (Blueprint $table) {
-            $table->dropForeign(['size_option_id']);
-            $table->dropForeign(['color_option_id']);
             $table->dropColumn(['size_option_id', 'color_option_id']);
         });
 

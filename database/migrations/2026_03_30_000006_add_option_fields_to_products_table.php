@@ -1,11 +1,14 @@
 <?php
 
+use App\Support\Migration\DropsForeignKeysSafely;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    use DropsForeignKeysSafely;
+
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
@@ -20,13 +23,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        foreach (['size_option_id', 'color_option_id', 'gender_option_id', 'material_option_id', 'shape_option_id', 'brand_option_id'] as $col) {
+            $this->dropForeignKeyIfExists('products', $col);
+        }
         Schema::table('products', function (Blueprint $table) {
-            $table->dropForeign(['size_option_id']);
-            $table->dropForeign(['color_option_id']);
-            $table->dropForeign(['gender_option_id']);
-            $table->dropForeign(['material_option_id']);
-            $table->dropForeign(['shape_option_id']);
-            $table->dropForeign(['brand_option_id']);
             $table->dropColumn([
                 'size_option_id',
                 'color_option_id',

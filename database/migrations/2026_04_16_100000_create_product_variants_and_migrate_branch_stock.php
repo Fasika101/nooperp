@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Migration\DropsForeignKeysSafely;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    use DropsForeignKeysSafely;
+
     protected const VARIANT_UNIQUE = 'product_variants_product_color_size_unique';
 
     public function up(): void
@@ -243,24 +246,18 @@ return new class extends Migration
     {
         $this->dropBranchProductStocksOldUniqueIndexes();
 
-        Schema::table('branch_product_stocks', function (Blueprint $table) {
-            try {
-                $table->dropForeign(['product_id']);
-            } catch (\Throwable) {
-            }
-            if (Schema::hasColumn('branch_product_stocks', 'color_option_id')) {
-                try {
-                    $table->dropForeign(['color_option_id']);
-                } catch (\Throwable) {
-                }
-            }
-        });
+        $this->dropForeignKeyIfExists('branch_product_stocks', 'product_id');
+        if (Schema::hasColumn('branch_product_stocks', 'color_option_id')) {
+            $this->dropForeignKeyIfExists('branch_product_stocks', 'color_option_id');
+        }
 
         Schema::table('branch_product_stocks', function (Blueprint $table) {
             if (Schema::hasColumn('branch_product_stocks', 'color_option_id')) {
                 $table->dropColumn('color_option_id');
             }
-            $table->dropColumn('product_id');
+            if (Schema::hasColumn('branch_product_stocks', 'product_id')) {
+                $table->dropColumn('product_id');
+            }
         });
 
         Schema::table('branch_product_stocks', function (Blueprint $table) {
@@ -279,7 +276,7 @@ return new class extends Migration
             ] as $idx) {
                 try {
                     DB::statement('DROP INDEX IF EXISTS '.$idx);
-                } catch (\Throwable) {
+                } catch (Throwable) {
                 }
             }
 
@@ -292,7 +289,7 @@ return new class extends Migration
             foreach ($names as $name) {
                 try {
                     DB::statement('ALTER TABLE branch_product_stocks DROP INDEX `'.$name.'`');
-                } catch (\Throwable) {
+                } catch (Throwable) {
                 }
             }
         }
@@ -324,15 +321,12 @@ return new class extends Migration
             DB::table('stock_purchases')->where('id', $p->id)->update(['product_variant_id' => $vid]);
         }
 
-        Schema::table('stock_purchases', function (Blueprint $table) {
-            if (Schema::hasColumn('stock_purchases', 'color_option_id')) {
-                try {
-                    $table->dropForeign(['color_option_id']);
-                } catch (\Throwable) {
-                }
+        $this->dropForeignKeyIfExists('stock_purchases', 'color_option_id');
+        if (Schema::hasColumn('stock_purchases', 'color_option_id')) {
+            Schema::table('stock_purchases', function (Blueprint $table) {
                 $table->dropColumn('color_option_id');
-            }
-        });
+            });
+        }
 
         Schema::table('stock_purchases', function (Blueprint $table) {
             $table->foreignId('product_variant_id')->nullable(false)->change();
@@ -365,15 +359,12 @@ return new class extends Migration
             DB::table('branch_stock_transfers')->where('id', $row->id)->update(['product_variant_id' => $vid]);
         }
 
-        Schema::table('branch_stock_transfers', function (Blueprint $table) {
-            if (Schema::hasColumn('branch_stock_transfers', 'color_option_id')) {
-                try {
-                    $table->dropForeign(['color_option_id']);
-                } catch (\Throwable) {
-                }
+        $this->dropForeignKeyIfExists('branch_stock_transfers', 'color_option_id');
+        if (Schema::hasColumn('branch_stock_transfers', 'color_option_id')) {
+            Schema::table('branch_stock_transfers', function (Blueprint $table) {
                 $table->dropColumn('color_option_id');
-            }
-        });
+            });
+        }
 
         Schema::table('branch_stock_transfers', function (Blueprint $table) {
             $table->foreignId('product_variant_id')->nullable(false)->change();

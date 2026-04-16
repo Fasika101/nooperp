@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Migration\DropsForeignKeysSafely;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    use DropsForeignKeysSafely;
+
     public function up(): void
     {
         Schema::table('bank_accounts', function (Blueprint $table) {
@@ -98,38 +101,38 @@ return new class extends Migration
 
     public function down(): void
     {
+        $this->dropForeignKeyIfExists('payment_types', 'branch_id');
         Schema::table('payment_types', function (Blueprint $table) {
-            $table->dropForeign(['branch_id']);
             $table->dropColumn('branch_id');
         });
 
+        $this->dropForeignKeyIfExists('payments', 'branch_id');
         Schema::table('payments', function (Blueprint $table) {
-            $table->dropForeign(['branch_id']);
             $table->dropColumn('branch_id');
         });
 
+        $this->dropForeignKeyIfExists('orders', 'branch_id');
         Schema::table('orders', function (Blueprint $table) {
-            $table->dropForeign(['branch_id']);
             $table->dropColumn('branch_id');
         });
 
+        $this->dropForeignKeyIfExists('stock_purchases', 'branch_id');
         Schema::table('stock_purchases', function (Blueprint $table) {
-            $table->dropForeign(['branch_id']);
             $table->dropColumn('branch_id');
         });
 
+        $this->dropForeignKeyIfExists('expenses', 'branch_id');
         Schema::table('expenses', function (Blueprint $table) {
-            $table->dropForeign(['branch_id']);
             $table->dropColumn('branch_id');
         });
 
+        $this->dropForeignKeyIfExists('bank_transactions', 'branch_id');
         Schema::table('bank_transactions', function (Blueprint $table) {
-            $table->dropForeign(['branch_id']);
             $table->dropColumn('branch_id');
         });
 
+        $this->dropForeignKeyIfExists('bank_accounts', 'branch_id');
         Schema::table('bank_accounts', function (Blueprint $table) {
-            $table->dropForeign(['branch_id']);
             $table->dropColumn('branch_id');
         });
     }

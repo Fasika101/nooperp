@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Migration\DropsForeignKeysSafely;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    use DropsForeignKeysSafely;
+
     protected const BRANCH_STOCK_COLOR_UNIQUE = 'branch_product_stocks_branch_product_color_unique';
 
     public function up(): void
@@ -99,7 +102,7 @@ return new class extends Migration
             Schema::table($table, function (Blueprint $blueprint) {
                 $blueprint->dropUnique(['branch_id', 'product_id']);
             });
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Index missing or name mismatch; safe to continue if column add will fail otherwise.
         }
     }
@@ -209,40 +212,38 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('branch_stock_transfers', function (Blueprint $table) {
-            $table->dropForeign(['color_option_id']);
-            $table->dropColumn('color_option_id');
-        });
+        $this->dropForeignKeyIfExists('branch_stock_transfers', 'color_option_id');
+        if (Schema::hasColumn('branch_stock_transfers', 'color_option_id')) {
+            Schema::table('branch_stock_transfers', function (Blueprint $table) {
+                $table->dropColumn('color_option_id');
+            });
+        }
 
-        Schema::table('stock_purchases', function (Blueprint $table) {
-            $table->dropForeign(['color_option_id']);
-            $table->dropColumn('color_option_id');
-        });
+        $this->dropForeignKeyIfExists('stock_purchases', 'color_option_id');
+        if (Schema::hasColumn('stock_purchases', 'color_option_id')) {
+            Schema::table('stock_purchases', function (Blueprint $table) {
+                $table->dropColumn('color_option_id');
+            });
+        }
 
         $this->dropBranchProductStocksColorUniqueIndex();
 
-        Schema::table('branch_product_stocks', function (Blueprint $table) {
-            $table->dropForeign(['color_option_id']);
-            $table->dropColumn('color_option_id');
-        });
+        $this->dropForeignKeyIfExists('branch_product_stocks', 'color_option_id');
+        if (Schema::hasColumn('branch_product_stocks', 'color_option_id')) {
+            Schema::table('branch_product_stocks', function (Blueprint $table) {
+                $table->dropColumn('color_option_id');
+            });
+        }
 
-        Schema::table('branch_product_stocks', function (Blueprint $table) {
-            $table->unique(['branch_id', 'product_id']);
-        });
+        if (Schema::hasColumn('branch_product_stocks', 'branch_id') && Schema::hasColumn('branch_product_stocks', 'product_id')) {
+            Schema::table('branch_product_stocks', function (Blueprint $table) {
+                $table->unique(['branch_id', 'product_id']);
+            });
+        }
     }
 
     protected function dropBranchProductStocksColorUniqueIndex(): void
     {
-        $driver = Schema::getConnection()->getDriverName();
-
-        if ($driver === 'sqlite') {
-            DB::statement('DROP INDEX IF EXISTS '.self::BRANCH_STOCK_COLOR_UNIQUE);
-
-            return;
-        }
-
-        Schema::table('branch_product_stocks', function (Blueprint $table) {
-            $table->dropIndex(self::BRANCH_STOCK_COLOR_UNIQUE);
-        });
+        $this->dropIndexIfExists('branch_product_stocks', self::BRANCH_STOCK_COLOR_UNIQUE);
     }
 };

@@ -1,11 +1,14 @@
 <?php
 
+use App\Support\Migration\DropsForeignKeysSafely;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    use DropsForeignKeysSafely;
+
     public function up(): void
     {
         Schema::table('orders', function (Blueprint $table) {
@@ -19,8 +22,8 @@ return new class extends Migration
 
     public function down(): void
     {
+        $this->dropForeignKeyIfExists('orders', 'tax_type_id');
         Schema::table('orders', function (Blueprint $table) {
-            $table->dropForeign(['tax_type_id']);
             $table->dropColumn(['discount_amount', 'discount_type', 'shipping_amount', 'tax_amount', 'tax_type_id']);
         });
     }

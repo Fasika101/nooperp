@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Migration\DropsForeignKeysSafely;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
+    use DropsForeignKeysSafely;
+
     public function up(): void
     {
         if (! Schema::hasColumn('stock_purchases', 'color_option_id')) {
@@ -37,16 +40,16 @@ return new class extends Migration
 
     public function down(): void
     {
+        $this->dropForeignKeyIfExists('branch_stock_transfers', 'color_option_id');
         if (Schema::hasColumn('branch_stock_transfers', 'color_option_id')) {
             Schema::table('branch_stock_transfers', function (Blueprint $table) {
-                $table->dropForeign(['color_option_id']);
                 $table->dropColumn('color_option_id');
             });
         }
 
+        $this->dropForeignKeyIfExists('stock_purchases', 'color_option_id');
         if (Schema::hasColumn('stock_purchases', 'color_option_id')) {
             Schema::table('stock_purchases', function (Blueprint $table) {
-                $table->dropForeign(['color_option_id']);
                 $table->dropColumn('color_option_id');
             });
         }
