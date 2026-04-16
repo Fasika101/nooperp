@@ -122,32 +122,88 @@ return new class extends Migration
         }
     }
 
-    protected function addBranchProductStocksColorUniqueIndexIfMissing(): void
+    protected function ensureBranchProductStocksTableIsInnoDb(): void
+    {
+        if (Schema::getConnection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
+        $engine = DB::selectOne(
+            'SELECT ENGINE FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            ['branch_product_stocks']
+        );
+        $name = is_object($engine) ? ($engine->ENGINE ?? null) : null;
+        if ($name !== null && strtoupper((string) $name) === 'INNODB') {
+            return;
+        }
+
+        DB::statement('ALTER TABLE `branch_product_stocks` ENGINE=InnoDB');
+    }
+
+    protected function branchProductStocksColorUniqueIndexExists(): bool
     {
         $driver = Schema::getConnection()->getDriverName();
 
         if ($driver === 'mysql') {
-            $exists = DB::selectOne(
-                'SELECT 1 AS ok FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
-                ['branch_product_stocks', self::BRANCH_STOCK_COLOR_UNIQUE],
+            $rows = DB::select(
+                'SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() '
+                .'AND table_name = ? AND index_name = ? LIMIT 1',
+                ['branch_product_stocks', self::BRANCH_STOCK_COLOR_UNIQUE]
             );
-            if ($exists) {
-                return;
-            }
-        } elseif ($driver === 'sqlite') {
-            $indexes = DB::select("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?", [self::BRANCH_STOCK_COLOR_UNIQUE]);
-            if ($indexes !== []) {
-                return;
-            }
+
+            return $rows !== [];
         }
 
-        $expr = $driver === 'pgsql'
-            ? 'COALESCE(color_option_id, 0)'
-            : 'IFNULL(color_option_id, 0)';
+        if ($driver === 'pgsql') {
+            $rows = DB::select(
+                'SELECT 1 FROM pg_indexes WHERE tablename = ? AND indexname = ? LIMIT 1',
+                ['branch_product_stocks', self::BRANCH_STOCK_COLOR_UNIQUE]
+            );
+
+            return $rows !== [];
+        }
+
+        if ($driver === 'sqlite') {
+            $indexes = DB::select("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?", [self::BRANCH_STOCK_COLOR_UNIQUE]);
+
+            return $indexes !== [];
+        }
+
+        return false;
+    }
+
+    protected function addBranchProductStocksColorUniqueIndexIfMissing(): void
+    {
+        if ($this->branchProductStocksColorUniqueIndexExists()) {
+            return;
+        }
+
+        $driver = Schema::getConnection()->getDriverName();
+
+        if ($driver === 'mysql') {
+            // MariaDB/MySQL 8.0.13+: functional key parts must be parenthesized (requires InnoDB).
+            $this->ensureBranchProductStocksTableIsInnoDb();
+
+            DB::statement(
+                'CREATE UNIQUE INDEX `'.self::BRANCH_STOCK_COLOR_UNIQUE.'` ON `branch_product_stocks` '
+                .'(`branch_id`, `product_id`, (IFNULL(`color_option_id`, 0)))'
+            );
+
+            return;
+        }
+
+        if ($driver === 'pgsql') {
+            DB::statement(
+                'CREATE UNIQUE INDEX "'.self::BRANCH_STOCK_COLOR_UNIQUE.'" ON "branch_product_stocks" '
+                .'(branch_id, product_id, COALESCE(color_option_id, 0))'
+            );
+
+            return;
+        }
 
         DB::statement(
-            'CREATE UNIQUE INDEX '.self::BRANCH_STOCK_COLOR_UNIQUE
-                .' ON branch_product_stocks (branch_id, product_id, '.$expr.')'
+            'CREATE UNIQUE INDEX '.self::BRANCH_STOCK_COLOR_UNIQUE.' ON branch_product_stocks '
+            .'(branch_id, product_id, IFNULL(color_option_id, 0))'
         );
     }
 
