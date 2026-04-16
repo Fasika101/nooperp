@@ -60,6 +60,27 @@ return new class extends Migration
         DB::statement('ALTER TABLE `product_variants` ENGINE=InnoDB');
     }
 
+    /**
+     * MySQL/MariaDB: expression-only unique indexes are not portable (MariaDB 10.11 rejects some
+     * functional-index DDL). Use STORED generated columns + a normal unique index instead.
+     */
+    protected function ensureMysqlMariaDbProductVariantUniquenessKeyColumns(): void
+    {
+        if (! Schema::hasColumn('product_variants', 'color_option_key')) {
+            DB::statement(
+                'ALTER TABLE `product_variants` ADD COLUMN `color_option_key` BIGINT UNSIGNED '
+                .'GENERATED ALWAYS AS (IFNULL(`color_option_id`, 0)) STORED'
+            );
+        }
+
+        if (! Schema::hasColumn('product_variants', 'size_option_key')) {
+            DB::statement(
+                'ALTER TABLE `product_variants` ADD COLUMN `size_option_key` BIGINT UNSIGNED '
+                .'GENERATED ALWAYS AS (IFNULL(`size_option_id`, 0)) STORED'
+            );
+        }
+    }
+
     protected function ensureProductVariantsUniqueIndex(): void
     {
         if ($this->productVariantsUniqueIndexExists()) {
@@ -69,10 +90,11 @@ return new class extends Migration
         $driver = Schema::getConnection()->getDriverName();
 
         if ($driver === 'mysql') {
-            // MySQL 8.0.13+: functional key parts must be parenthesized (requires InnoDB).
+            $this->ensureMysqlMariaDbProductVariantUniquenessKeyColumns();
+
             DB::statement(
                 'CREATE UNIQUE INDEX `'.self::VARIANT_UNIQUE.'` ON `product_variants` '
-                .'(`product_id`, (IFNULL(`color_option_id`, 0)), (IFNULL(`size_option_id`, 0)))'
+                .'(`product_id`, `color_option_key`, `size_option_key`)'
             );
 
             return;
