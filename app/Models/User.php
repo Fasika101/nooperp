@@ -19,6 +19,10 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
     /** @use HasFactory<UserFactory> */
     use HasFactory, HasRoles, Notifiable;
 
+    public const ROLE_SUPER_ADMIN = 'super_admin';
+
+    public const ROLE_MANAGER = 'manager';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -57,7 +61,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->hasRole('super_admin') || $this->roles()->exists();
+        return $this->hasRole(self::ROLE_SUPER_ADMIN) || $this->roles()->exists();
     }
 
     public function branch()
@@ -70,9 +74,18 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
         return $this->hasOne(Employee::class);
     }
 
+    /**
+     * Users who may work across all branches (POS, transfers, reports) regardless of assigned branch_id.
+     */
+    public function hasUnrestrictedBranchAccess(): bool
+    {
+        return $this->hasRole(self::ROLE_SUPER_ADMIN)
+            || $this->hasRole(self::ROLE_MANAGER);
+    }
+
     public function isBranchRestricted(): bool
     {
-        return ! $this->hasRole('super_admin') && filled($this->branch_id);
+        return ! $this->hasUnrestrictedBranchAccess() && filled($this->branch_id);
     }
 
     public function getFilamentAvatarUrl(): ?string

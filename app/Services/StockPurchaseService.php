@@ -69,6 +69,14 @@ class StockPurchaseService
                     $sizeOptionId !== null && $sizeOptionId > 0 ? (int) $sizeOptionId : null,
                 );
 
+                // Ensure the selected options are attached to the product for POS visibility
+                if ($colorOptionId !== null && $colorOptionId > 0) {
+                    $product->attachedProductOptions()->syncWithoutDetaching([$colorOptionId]);
+                }
+                if ($sizeOptionId !== null && $sizeOptionId > 0) {
+                    $product->attachedProductOptions()->syncWithoutDetaching([$sizeOptionId]);
+                }
+
                 $purchase = StockPurchase::query()->create([
                     'product_id' => $product->id,
                     'product_variant_id' => $variant->id,
@@ -158,6 +166,14 @@ class StockPurchaseService
             }
 
             $variant = ProductVariant::findOrCreateForProduct($product->id, $colorOptionId, $sizeOptionId);
+
+            // Ensure the selected options are attached to the product for POS visibility
+            if ($colorOptionId !== null && $colorOptionId > 0) {
+                $product->attachedProductOptions()->syncWithoutDetaching([$colorOptionId]);
+            }
+            if ($sizeOptionId !== null && $sizeOptionId > 0) {
+                $product->attachedProductOptions()->syncWithoutDetaching([$sizeOptionId]);
+            }
 
             $payload = $data;
             $payload['product_variant_id'] = $variant->id;

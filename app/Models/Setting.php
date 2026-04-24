@@ -142,4 +142,14 @@ class Setting extends Model
 
         return $v !== null && $v !== '';
     }
+
+    public static function getBusinessName(): string
+    {
+        return self::get('business_name', config('app.name', 'Liba Optical'));
+    }
+
+    public static function getBusinessAddress(): ?string
+    {
+        return self::get('business_address');
+    }
 }

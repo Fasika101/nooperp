@@ -6,6 +6,7 @@ use App\Filament\Resources\StockPurchaseResource\Pages;
 use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\Product;
+use App\Models\ProductOption;
 use App\Models\Setting;
 use App\Models\StockPurchase;
 use Filament\Actions\ViewAction;
@@ -85,38 +86,22 @@ class StockPurchaseResource extends Resource
                             ->required(),
                         Select::make('color_option_id')
                             ->label('Color')
-                            ->options(function (Get $get) {
-                                $pid = self::resolvedProductIdFromForm($get);
-                                if ($pid <= 0) {
-                                    return [];
-                                }
-                                $product = Product::query()->find($pid);
-
-                                return $product
-                                    ? $product->availableColorOptions()->pluck('name', 'id')->all()
-                                    : [];
-                            })
+                            ->options(fn () => ProductOption::query()
+                                ->where('type', ProductOption::TYPE_COLOR)
+                                ->orderBy('name')
+                                ->pluck('name', 'id'))
                             ->searchable()
                             ->preload()
-                            ->visible(fn (Get $get): bool => self::productHasMultipleColors(self::resolvedProductIdFromForm($get)))
-                            ->required(fn (Get $get): bool => self::productHasMultipleColors(self::resolvedProductIdFromForm($get))),
+                            ->hint('Choose existing or leave empty for default'),
                         Select::make('size_option_id')
                             ->label('Size')
-                            ->options(function (Get $get) {
-                                $pid = self::resolvedProductIdFromForm($get);
-                                if ($pid <= 0) {
-                                    return [];
-                                }
-                                $product = Product::query()->find($pid);
-
-                                return $product
-                                    ? $product->availableSizeOptions()->pluck('name', 'id')->all()
-                                    : [];
-                            })
+                            ->options(fn () => ProductOption::query()
+                                ->where('type', ProductOption::TYPE_SIZE)
+                                ->orderBy('name')
+                                ->pluck('name', 'id'))
                             ->searchable()
                             ->preload()
-                            ->visible(fn (Get $get): bool => self::productHasMultipleSizes(self::resolvedProductIdFromForm($get)))
-                            ->required(fn (Get $get): bool => self::productHasMultipleSizes(self::resolvedProductIdFromForm($get))),
+                            ->hint('Choose existing or leave empty for default'),
                     ])
                     ->defaultItems(1)
                     ->addActionLabel('Add branch')
@@ -272,27 +257,5 @@ class StockPurchaseResource extends Resource
     protected static function resolvedProductIdFromForm(Get $get): int
     {
         return (int) ($get('product_id') ?? $get('../../product_id') ?? 0);
-    }
-
-    protected static function productHasMultipleColors(int $productId): bool
-    {
-        if ($productId <= 0) {
-            return false;
-        }
-
-        $product = Product::query()->find($productId);
-
-        return $product && $product->availableColorOptions()->count() > 1;
-    }
-
-    protected static function productHasMultipleSizes(int $productId): bool
-    {
-        if ($productId <= 0) {
-            return false;
-        }
-
-        $product = Product::query()->find($productId);
-
-        return $product && $product->availableSizeOptions()->count() > 1;
     }
 }

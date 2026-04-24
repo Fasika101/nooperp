@@ -41,17 +41,23 @@ class CreateStockPurchase extends CreateRecord
     {
         $raw = (array) ($data['restock_allocations'] ?? []);
         $product = Product::query()->find((int) ($data['product_id'] ?? 0));
+
+        // Auto-fill color/size only if the product has exactly one option AND the user left it blank.
         if ($product && $product->availableColorOptions()->count() === 1) {
             $cid = (int) $product->availableColorOptions()->first()->id;
             foreach ($raw as &$row) {
-                $row['color_option_id'] = $cid;
+                if (empty($row['color_option_id'])) {
+                    $row['color_option_id'] = $cid;
+                }
             }
             unset($row);
         }
         if ($product && $product->availableSizeOptions()->count() === 1) {
             $sid = (int) $product->availableSizeOptions()->first()->id;
             foreach ($raw as &$row) {
-                $row['size_option_id'] = $sid;
+                if (empty($row['size_option_id'])) {
+                    $row['size_option_id'] = $sid;
+                }
             }
             unset($row);
         }
@@ -70,26 +76,6 @@ class CreateStockPurchase extends CreateRecord
                 if ((int) $line['branch_id'] !== $allowedBranchId) {
                     throw ValidationException::withMessages([
                         'restock_allocations' => ['You can only restock to your assigned branch.'],
-                    ]);
-                }
-            }
-        }
-
-        if ($product && $product->availableColorOptions()->count() >= 2) {
-            foreach ($lines as $line) {
-                if (empty($line['color_option_id'])) {
-                    throw ValidationException::withMessages([
-                        'restock_allocations' => ['Select a color on each row when the product has multiple colors.'],
-                    ]);
-                }
-            }
-        }
-
-        if ($product && $product->availableSizeOptions()->count() >= 2) {
-            foreach ($lines as $line) {
-                if (empty($line['size_option_id'])) {
-                    throw ValidationException::withMessages([
-                        'restock_allocations' => ['Select a size on each row when the product has multiple sizes.'],
                     ]);
                 }
             }

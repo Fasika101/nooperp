@@ -19,6 +19,7 @@ class OrderItem extends Model
         'price',
         'unit_cost',
         'optical_meta',
+        'prescription_id',
     ];
 
     protected function casts(): array
@@ -27,7 +28,13 @@ class OrderItem extends Model
             'price' => 'decimal:2',
             'unit_cost' => 'decimal:2',
             'optical_meta' => 'array',
+            'prescription_id' => 'integer',
         ];
+    }
+
+    public function prescription(): BelongsTo
+    {
+        return $this->belongsTo(Prescription::class);
     }
 
     public function getDisplayNameAttribute(): string

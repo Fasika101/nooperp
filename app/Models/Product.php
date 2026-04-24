@@ -113,10 +113,70 @@ class Product extends Model
     }
 
     /**
+     * Colors from pivot / legacy product columns (catalog config), not filtered by branch stock.
+     * Optionally narrow to colors that appear on a variant with $onlyForSizeOptionId for this product.
+     *
      * @return Collection<int, ProductOption>
      */
-    public function availableSizeOptions(): Collection
+    public function configuredColorOptions(?int $onlyForSizeOptionId = null): Collection
     {
+        if ($onlyForSizeOptionId !== null) {
+            $narrowed = $this->attachedProductOptions()
+                ->where('product_options.type', ProductOption::TYPE_COLOR)
+                ->orderBy('product_options.name')
+                ->whereHas('variants', function ($vq) use ($onlyForSizeOptionId) {
+                    $vq->where('product_id', $this->id)
+                        ->where('size_option_id', $onlyForSizeOptionId);
+                })
+                ->get();
+            if ($narrowed->isNotEmpty()) {
+                return $narrowed;
+            }
+        }
+
+        $fromPivot = $this->attachedProductOptions()
+            ->where('product_options.type', ProductOption::TYPE_COLOR)
+            ->orderBy('product_options.name')
+            ->get();
+
+        if ($fromPivot->isNotEmpty()) {
+            return $fromPivot;
+        }
+
+        if ($this->color_option_id) {
+            $one = ProductOption::query()
+                ->whereKey($this->color_option_id)
+                ->where('type', ProductOption::TYPE_COLOR)
+                ->first();
+
+            return $one ? new Collection([$one]) : new Collection;
+        }
+
+        return new Collection;
+    }
+
+    /**
+     * Sizes from pivot / legacy product columns (catalog config), not filtered by branch stock.
+     * Optionally narrow to sizes that appear on a variant with $onlyForColorOptionId for this product.
+     *
+     * @return Collection<int, ProductOption>
+     */
+    public function configuredSizeOptions(?int $onlyForColorOptionId = null): Collection
+    {
+        if ($onlyForColorOptionId !== null) {
+            $narrowed = $this->attachedProductOptions()
+                ->where('product_options.type', ProductOption::TYPE_SIZE)
+                ->orderBy('product_options.name')
+                ->whereHas('variants', function ($vq) use ($onlyForColorOptionId) {
+                    $vq->where('product_id', $this->id)
+                        ->where('color_option_id', $onlyForColorOptionId);
+                })
+                ->get();
+            if ($narrowed->isNotEmpty()) {
+                return $narrowed;
+            }
+        }
+
         $fromPivot = $this->attachedProductOptions()
             ->where('product_options.type', ProductOption::TYPE_SIZE)
             ->orderBy('product_options.name')
@@ -139,35 +199,190 @@ class Product extends Model
     }
 
     /**
+     * POS dropdowns: prefer in-stock options for the branch; fall back to configured options so the UI is usable
+     * when variant rows or stock links are incomplete.
+     *
      * @return Collection<int, ProductOption>
      */
-    public function availableColorOptions(): Collection
+    public function posSelectableColorOptions(?int $branchId, ?int $onlyForSizeOptionId = null): Collection
     {
-        $fromPivot = $this->attachedProductOptions()
+        $available = $this->availableColorOptions($branchId, $onlyForSizeOptionId);
+        if ($available->isNotEmpty()) {
+            return $available;
+        }
+
+        return $this->configuredColorOptions($onlyForSizeOptionId);
+    }
+
+    /**
+     * @return Collection<int, ProductOption>
+     */
+    public function posSelectableSizeOptions(?int $branchId, ?int $onlyForColorOptionId = null): Collection
+    {
+        $available = $this->availableSizeOptions($branchId, $onlyForColorOptionId);
+        if ($available->isNotEmpty()) {
+            return $available;
+        }
+
+        return $this->configuredSizeOptions($onlyForColorOptionId);
+    }
+
+    /**
+     * Whether this (color, size) pair exists on a {@see ProductVariant} row when the product has variants.
+     */
+    public function posVariantPairIsAllowed(?int $colorOptionId, ?int $sizeOptionId): bool
+    {
+        if (! $this->variants()->exists()) {
+            return true;
+        }
+
+        $q = ProductVariant::query()->where('product_id', $this->id);
+        if ($colorOptionId !== null) {
+            $q->where('color_option_id', $colorOptionId);
+        } else {
+            $q->whereNull('color_option_id');
+        }
+        if ($sizeOptionId !== null) {
+            $q->where('size_option_id', $sizeOptionId);
+        } else {
+            $q->whereNull('size_option_id');
+        }
+
+        return $q->exists();
+    }
+
+    /**
+     * Sizes that can be sold for this product. Optionally restrict to variants that include $onlyForColorOptionId
+     * and have branch stock quantity &gt;= 1 when $branchId is set (POS). Omit $branchId to list all attached sizes (e.g. stock purchase).
+     *
+     * @return Collection<int, ProductOption>
+     */
+    public function availableSizeOptions(?int $branchId = null, ?int $onlyForColorOptionId = null): Collection
+    {
+        $query = $this->attachedProductOptions()
+            ->where('product_options.type', ProductOption::TYPE_SIZE)
+            ->orderBy('product_options.name');
+
+        if ($branchId !== null) {
+            $query->whereHas('variants', function ($vq) use ($branchId, $onlyForColorOptionId) {
+                $vq->where('product_id', $this->id);
+                if ($onlyForColorOptionId !== null) {
+                    $vq->where('color_option_id', $onlyForColorOptionId);
+                }
+                $vq->whereHas('branchStocks', function ($sq) use ($branchId) {
+                    $sq->where('branch_id', $branchId)
+                        ->where('quantity', '>=', 1);
+                });
+            });
+        }
+
+        $fromPivot = $query->get();
+
+        if ($fromPivot->isNotEmpty()) {
+            return $fromPivot;
+        }
+
+        if ($this->size_option_id) {
+            $oneQuery = ProductOption::query()
+                ->whereKey($this->size_option_id)
+                ->where('type', ProductOption::TYPE_SIZE);
+
+            if ($branchId !== null) {
+                $oneQuery->whereHas('variants', function ($vq) use ($branchId, $onlyForColorOptionId) {
+                    $vq->where('product_id', $this->id);
+                    if ($onlyForColorOptionId !== null) {
+                        $vq->where('color_option_id', $onlyForColorOptionId);
+                    }
+                    $vq->whereHas('branchStocks', function ($sq) use ($branchId) {
+                        $sq->where('branch_id', $branchId)
+                            ->where('quantity', '>=', 1);
+                    });
+                });
+            }
+
+            $one = $oneQuery->first();
+
+            if ($one) {
+                return new Collection([$one]);
+            }
+        }
+
+        return new Collection;
+    }
+
+    /**
+     * Colors that can be sold for this product. Optionally restrict to variants that include $onlyForSizeOptionId
+     * and have branch stock quantity &gt;= 1 when $branchId is set (POS). Omit $branchId to list all attached colors (e.g. stock purchase).
+     *
+     * @return Collection<int, ProductOption>
+     */
+    public function availableColorOptions(?int $branchId = null, ?int $onlyForSizeOptionId = null): Collection
+    {
+        $query = $this->attachedProductOptions()
             ->where('product_options.type', ProductOption::TYPE_COLOR)
-            ->orderBy('product_options.name')
-            ->get();
+            ->orderBy('product_options.name');
+
+        if ($branchId !== null) {
+            $query->whereHas('variants', function ($vq) use ($branchId, $onlyForSizeOptionId) {
+                $vq->where('product_id', $this->id);
+                if ($onlyForSizeOptionId !== null) {
+                    $vq->where('size_option_id', $onlyForSizeOptionId);
+                }
+                $vq->whereHas('branchStocks', function ($sq) use ($branchId) {
+                    $sq->where('branch_id', $branchId)
+                        ->where('quantity', '>=', 1);
+                });
+            });
+        }
+
+        $fromPivot = $query->get();
 
         if ($fromPivot->isNotEmpty()) {
             return $fromPivot;
         }
 
         if ($this->color_option_id) {
-            $one = ProductOption::query()
+            $oneQuery = ProductOption::query()
                 ->whereKey($this->color_option_id)
-                ->where('type', ProductOption::TYPE_COLOR)
-                ->first();
+                ->where('type', ProductOption::TYPE_COLOR);
 
-            return $one ? new Collection([$one]) : new Collection;
+            if ($branchId !== null) {
+                $oneQuery->whereHas('variants', function ($vq) use ($branchId, $onlyForSizeOptionId) {
+                    $vq->where('product_id', $this->id);
+                    if ($onlyForSizeOptionId !== null) {
+                        $vq->where('size_option_id', $onlyForSizeOptionId);
+                    }
+                    $vq->whereHas('branchStocks', function ($sq) use ($branchId) {
+                        $sq->where('branch_id', $branchId)
+                            ->where('quantity', '>=', 1);
+                    });
+                });
+            }
+
+            $one = $oneQuery->first();
+
+            if ($one) {
+                return new Collection([$one]);
+            }
         }
 
         return new Collection;
     }
 
-    public function posNeedsVariantModal(): bool
+    /**
+     * Open the POS variant modal when the catalog defines choices (pivot / legacy), not only when
+     * multiple SKUs are in stock — so staff pick color/size on add, same as lens customization.
+     */
+    public function posNeedsVariantModal(?int $branchId = null): bool
     {
-        return $this->availableColorOptions()->count() > 1
-            || $this->availableSizeOptions()->count() > 1;
+        $colors = $this->configuredColorOptions();
+        $sizes = $this->configuredSizeOptions();
+
+        if ($colors->count() > 1 || $sizes->count() > 1) {
+            return true;
+        }
+
+        return $colors->isNotEmpty() && $sizes->isNotEmpty();
     }
 
     /**
@@ -242,27 +457,10 @@ class Product extends Model
      *
      * @return SupportCollection<int, string>
      */
-    public function posColorLabels(): SupportCollection
+    public function posColorLabels(?int $branchId = null): SupportCollection
     {
-        if ($this->relationLoaded('attachedProductOptions')) {
-            $names = $this->attachedProductOptions
-                ->where('type', ProductOption::TYPE_COLOR)
-                ->sortBy('name')
-                ->pluck('name')
-                ->filter()
-                ->unique()
-                ->values();
-            if ($names->isNotEmpty()) {
-                return SupportCollection::make($names->all());
-            }
-        }
-
-        if ($this->relationLoaded('color') && $this->color?->name) {
-            return SupportCollection::make([$this->color->name]);
-        }
-
         return SupportCollection::make(
-            $this->availableColorOptions()->pluck('name')->unique()->values()->all()
+            $this->configuredColorOptions()->pluck('name')->unique()->values()->all()
         );
     }
 
@@ -271,27 +469,10 @@ class Product extends Model
      *
      * @return SupportCollection<int, string>
      */
-    public function posSizeLabels(): SupportCollection
+    public function posSizeLabels(?int $branchId = null): SupportCollection
     {
-        if ($this->relationLoaded('attachedProductOptions')) {
-            $names = $this->attachedProductOptions
-                ->where('type', ProductOption::TYPE_SIZE)
-                ->sortBy('name')
-                ->pluck('name')
-                ->filter()
-                ->unique()
-                ->values();
-            if ($names->isNotEmpty()) {
-                return SupportCollection::make($names->all());
-            }
-        }
-
-        if ($this->relationLoaded('size') && $this->size?->name) {
-            return SupportCollection::make([$this->size->name]);
-        }
-
         return SupportCollection::make(
-            $this->availableSizeOptions()->pluck('name')->unique()->values()->all()
+            $this->configuredSizeOptions()->pluck('name')->unique()->values()->all()
         );
     }
 

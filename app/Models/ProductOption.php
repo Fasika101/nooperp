@@ -155,4 +155,13 @@ class ProductOption extends Model
     {
         return $this->belongsToMany(Product::class, 'product_product_option')->withTimestamps();
     }
+
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class, match ($this->type) {
+            self::TYPE_COLOR => 'color_option_id',
+            self::TYPE_SIZE => 'size_option_id',
+            default => 'id', // Should not happen for inventory
+        });
+    }
 }

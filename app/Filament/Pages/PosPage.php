@@ -14,6 +14,7 @@ use App\Models\OrderItem;
 use App\Models\OrderItemRxExtra;
 use App\Models\Payment;
 use App\Models\PaymentType;
+use App\Models\Prescription;
 use App\Models\Product;
 use App\Models\ProductOption;
 use App\Models\ProductVariant;
@@ -151,7 +152,7 @@ class PosPage extends Page
             ->when($this->branchId, function ($query, $branchId) {
                 $query->whereHas('branchStocks', fn ($query) => $query
                     ->where('branch_id', $branchId)
-                    ->where('quantity', '>', 0));
+                    ->where('quantity', '>=', 1));
             }, fn ($query) => $query->whereRaw('1 = 0'));
 
         if (trim($this->search) !== '') {
@@ -178,7 +179,18 @@ class PosPage extends Page
             $query->where('category_id', $this->categoryId);
         }
 
-        return $query->orderBy('name')->get();
+        $products = $query->orderBy('name')->get();
+
+        // Filter out products that have zero stock for ALL their available variants in this branch
+        if ($this->branchId) {
+            $products = $products->filter(function (Product $p) {
+                return $p->availableColorOptions($this->branchId)->isNotEmpty()
+                    || $p->availableSizeOptions($this->branchId)->isNotEmpty()
+                    || $p->getStockForBranch($this->branchId) > 0;
+            });
+        }
+
+        return $products;
     }
 
     /**
@@ -222,10 +234,10 @@ class PosPage extends Page
             return;
         }
 
-        if ($product->posNeedsVariantModal()) {
+        if ($product->posNeedsVariantModal($this->branchId)) {
             $this->variantModalProductId = $product->id;
-            $colors = $product->availableColorOptions();
-            $sizes = $product->availableSizeOptions();
+            $colors = $product->posSelectableColorOptions($this->branchId);
+            $sizes = $product->posSelectableSizeOptions($this->branchId);
             $this->variantPickColorId = $colors->count() === 1 ? (int) $colors->first()->id : null;
             $this->variantPickSizeId = $sizes->count() === 1 ? (int) $sizes->first()->id : null;
 
@@ -234,8 +246,8 @@ class PosPage extends Page
 
         $colorId = null;
         $sizeId = null;
-        $colors = $product->availableColorOptions();
-        $sizes = $product->availableSizeOptions();
+        $colors = $product->configuredColorOptions();
+        $sizes = $product->configuredSizeOptions();
         if ($colors->count() === 1) {
             $colorId = (int) $colors->first()->id;
         }
@@ -263,27 +275,43 @@ class PosPage extends Page
             return;
         }
 
-        $colors = $product->availableColorOptions();
-        $sizes = $product->availableSizeOptions();
+        $colorsAll = $product->configuredColorOptions();
+        $sizesAll = $product->configuredSizeOptions();
 
-        $colorId = $this->variantPickColorId;
-        $sizeId = $this->variantPickSizeId;
+        $colorId = $this->variantPickColorId ? (int) $this->variantPickColorId : null;
+        $sizeId = $this->variantPickSizeId ? (int) $this->variantPickSizeId : null;
 
-        if ($colors->count() > 1 && ! $colorId) {
+        if ($colorsAll->count() > 1 && ! $colorId) {
             Notification::make()->warning()->title('Select a color')->send();
 
             return;
         }
-        if ($sizes->count() > 1 && ! $sizeId) {
+        if ($sizesAll->count() > 1 && ! $sizeId) {
             Notification::make()->warning()->title('Select a size')->send();
 
             return;
         }
-        if ($colors->count() === 1) {
-            $colorId = (int) $colors->first()->id;
+        if ($colorsAll->count() === 1) {
+            $colorId = (int) $colorsAll->first()->id;
         }
-        if ($sizes->count() === 1) {
-            $sizeId = (int) $sizes->first()->id;
+        if ($sizesAll->count() === 1) {
+            $sizeId = (int) $sizesAll->first()->id;
+        }
+
+        if (! $product->posVariantPairIsAllowed($colorId, $sizeId)) {
+            Notification::make()
+                ->warning()
+                ->title('Invalid combination')
+                ->body('This color and size are not set up together for this product.')
+                ->send();
+
+            return;
+        }
+
+        if ($this->getAvailableStockForProduct($product->id, $colorId, $sizeId) <= 0) {
+            Notification::make()->danger()->title('Out of stock for this combination')->send();
+
+            return;
         }
 
         $this->pushProductLineToCart($product, $colorId, $sizeId);
@@ -293,6 +321,38 @@ class PosPage extends Page
             ->success()
             ->title('Added to cart')
             ->send();
+    }
+
+    public function updatedVariantPickColorId(mixed $value): void
+    {
+        $this->variantPickColorId = ($value === '' || $value === null) ? null : (int) $value;
+        if (! $this->variantModalProductId || ! $this->branchId || $this->variantPickSizeId === null) {
+            return;
+        }
+        $product = Product::query()->find($this->variantModalProductId);
+        if (! $product) {
+            return;
+        }
+        $sizes = $product->posSelectableSizeOptions($this->branchId, $this->variantPickColorId);
+        if (! $sizes->pluck('id')->contains((int) $this->variantPickSizeId)) {
+            $this->variantPickSizeId = null;
+        }
+    }
+
+    public function updatedVariantPickSizeId(mixed $value): void
+    {
+        $this->variantPickSizeId = ($value === '' || $value === null) ? null : (int) $value;
+        if (! $this->variantModalProductId || ! $this->branchId || $this->variantPickColorId === null) {
+            return;
+        }
+        $product = Product::query()->find($this->variantModalProductId);
+        if (! $product) {
+            return;
+        }
+        $colors = $product->posSelectableColorOptions($this->branchId, $this->variantPickSizeId);
+        if (! $colors->pluck('id')->contains((int) $this->variantPickColorId)) {
+            $this->variantPickColorId = null;
+        }
     }
 
     public function cancelVariantModal(): void
@@ -369,11 +429,13 @@ class PosPage extends Page
         $sid = $this->lensFrameSizeOptionId;
         $cid = $this->lensFrameColorOptionId;
 
-        if ($sid !== null && ! $product->availableSizeOptions()->pluck('id')->contains($sid)) {
-            $sid = null;
-        }
-        if ($cid !== null && ! $product->availableColorOptions()->pluck('id')->contains($cid)) {
-            $cid = null;
+        for ($i = 0; $i < 2; $i++) {
+            if ($sid !== null && ! $product->posSelectableSizeOptions($this->branchId, $cid)->pluck('id')->contains($sid)) {
+                $sid = null;
+            }
+            if ($cid !== null && ! $product->posSelectableColorOptions($this->branchId, $sid)->pluck('id')->contains($cid)) {
+                $cid = null;
+            }
         }
 
         $this->cart[$index]['size_option_id'] = $sid;
@@ -524,6 +586,30 @@ class PosPage extends Page
                 'optical_lens_rx_lens_type_id' => isset($row['id']) ? (int) $row['id'] : null,
                 'name' => $name,
             ]);
+        }
+
+        // Save to prescriptions table if it's a prescription line
+        if (($opticalMeta['route'] ?? '') === 'prescription' && $orderItem->order?->customer_id) {
+            $prescription = Prescription::create([
+                'customer_id' => $orderItem->order->customer_id,
+                'order_item_id' => $orderItem->id,
+                'vision' => $opticalMeta['vision'] ?? null,
+                'left_eye_sphere' => $opticalMeta['os']['sph'] ?? null,
+                'left_eye_cylinder' => $opticalMeta['os']['cyl'] ?? null,
+                'left_eye_axis' => $opticalMeta['os']['axis'] ?? null,
+                'left_eye_add' => $opticalMeta['os']['add'] ?? null,
+                'right_eye_sphere' => $opticalMeta['od']['sph'] ?? null,
+                'right_eye_cylinder' => $opticalMeta['od']['cyl'] ?? null,
+                'right_eye_axis' => $opticalMeta['od']['axis'] ?? null,
+                'right_eye_add' => $opticalMeta['od']['add'] ?? null,
+                'pd_mode' => $opticalMeta['pd']['mode'] ?? null,
+                'pd_single' => $opticalMeta['pd']['single'] ?? null,
+                'pd_right' => $opticalMeta['pd']['right'] ?? null,
+                'pd_left' => $opticalMeta['pd']['left'] ?? null,
+                'notes' => "Created from POS Order #{$orderItem->order->id}",
+            ]);
+
+            $orderItem->update(['prescription_id' => $prescription->id]);
         }
     }
 
@@ -972,24 +1058,20 @@ class PosPage extends Page
 
                         $variant = ProductVariant::query()
                             ->where('product_id', $item['product_id'])
-                            ->where(function ($q) use ($colorOptionId) {
-                                if ($colorOptionId !== null) {
-                                    $q->where('color_option_id', $colorOptionId);
-                                } else {
-                                    $q->whereNull('color_option_id');
-                                }
-                            })
-                            ->where(function ($q) use ($sizeOptionId) {
-                                if ($sizeOptionId !== null) {
-                                    $q->where('size_option_id', $sizeOptionId);
-                                } else {
-                                    $q->whereNull('size_option_id');
-                                }
-                            })
+                            ->when(
+                                $colorOptionId !== null,
+                                fn ($q) => $q->where('color_option_id', $colorOptionId),
+                                fn ($q) => $q->whereNull('color_option_id'),
+                            )
+                            ->when(
+                                $sizeOptionId !== null,
+                                fn ($q) => $q->where('size_option_id', $sizeOptionId),
+                                fn ($q) => $q->whereNull('size_option_id'),
+                            )
                             ->first();
 
                         if (! $variant) {
-                            throw new \RuntimeException("Insufficient stock for {$item['name']} in the selected branch.");
+                            $variant = ProductVariant::findOrCreateForProduct((int) $item['product_id'], $colorOptionId, $sizeOptionId);
                         }
 
                         $branchStock = BranchProductStock::query()
@@ -998,7 +1080,15 @@ class PosPage extends Page
                             ->lockForUpdate()
                             ->first();
 
-                        if (! $branchStock || $branchStock->quantity < $item['quantity']) {
+                        if (! $branchStock) {
+                            $branchStock = BranchProductStock::create([
+                                'branch_id' => $branchId,
+                                'product_variant_id' => $variant->id,
+                                'quantity' => 0,
+                            ]);
+                        }
+
+                        if ($branchStock->quantity < $item['quantity']) {
                             throw new \RuntimeException("Insufficient stock for {$item['name']} in the selected branch.");
                         }
 
@@ -1507,20 +1597,34 @@ class PosPage extends Page
             return 0;
         }
 
-        return (int) BranchProductStock::query()
+        // 1. Resolved variant: match NULL columns explicitly so we don't sum the wrong SKUs.
+        if ($colorOptionId !== null || $sizeOptionId !== null) {
+            return (int) BranchProductStock::query()
+                ->where('branch_id', $this->branchId)
+                ->whereHas('productVariant', function ($q) use ($productId, $colorOptionId, $sizeOptionId) {
+                    $q->where('product_id', $productId);
+                    if ($colorOptionId !== null) {
+                        $q->where('color_option_id', $colorOptionId);
+                    } else {
+                        $q->whereNull('color_option_id');
+                    }
+                    if ($sizeOptionId !== null) {
+                        $q->where('size_option_id', $sizeOptionId);
+                    } else {
+                        $q->whereNull('size_option_id');
+                    }
+                })
+                ->sum('quantity');
+        }
+
+        // 2. If no specific variant is selected yet (e.g. initial add to cart click),
+        // check if the product has ANY variants with stock, or if the product itself has stock.
+        $totalStock = (int) BranchProductStock::query()
             ->where('branch_id', $this->branchId)
-            ->whereHas('productVariant', function ($q) use ($productId, $colorOptionId, $sizeOptionId) {
-                $q->where('product_id', $productId);
-                if ($colorOptionId !== null) {
-                    $q->where('color_option_id', $colorOptionId);
-                } elseif ($sizeOptionId !== null) {
-                    $q->whereNull('color_option_id');
-                }
-                if ($sizeOptionId !== null) {
-                    $q->where('size_option_id', $sizeOptionId);
-                }
-            })
+            ->whereHas('productVariant', fn ($q) => $q->where('product_id', $productId))
             ->sum('quantity');
+
+        return $totalStock;
     }
 
     public function isBranchLocked(): bool

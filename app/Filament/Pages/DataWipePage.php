@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Models\User;
 use App\Services\DataWipeService;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Actions\Action;
-use Filament\Facades\Filament;
 use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\TextInput;
@@ -53,16 +53,7 @@ class DataWipePage extends Page
 
     public static function canAccess(): bool
     {
-        if (Auth::user()?->hasRole('super_admin') ?? false) {
-            return true;
-        }
-
-        $permission = static::getPagePermission();
-        $user = Filament::auth()?->user();
-
-        return $permission && $user
-            ? $user->can($permission)
-            : false;
+        return Auth::user()?->hasRole(User::ROLE_SUPER_ADMIN) ?? false;
     }
 
     public function defaultForm(Schema $schema): Schema

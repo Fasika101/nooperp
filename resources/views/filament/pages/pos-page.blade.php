@@ -281,8 +281,8 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                         <div class="pos-grid">
                             @forelse($this->getProducts() as $product)
                                 @php
-                                    $posColors = $product->posColorLabels()->implode(', ');
-                                    $posSizes = $product->posSizeLabels()->implode(', ');
+                                    $posColors = $product->posColorLabels($this->branchId)->implode(', ');
+                                    $posSizes = $product->posSizeLabels($this->branchId)->implode(', ');
                                     $posMeas = $product->posMeasurementsLabel();
                                     $posMaterial = $product->material?->name;
                                 @endphp
@@ -320,12 +320,12 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                         <p class="pos-customize-title">Add lenses to the sale</p>
                         <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Add frames from <strong>Products</strong>, then configure lenses here. Each lens is added as its own cart line with price.</p>
 
-                        @php
-                            $lensFrameCtx = $this->getLastNonOpticalCartContext();
-                            $lensFrameProduct = $lensFrameCtx ? \App\Models\Product::query()->with('attachedProductOptions')->find($lensFrameCtx['item']['product_id'] ?? null) : null;
-                            $lensSizes = $lensFrameProduct?->availableSizeOptions() ?? collect();
-                            $lensColors = $lensFrameProduct?->availableColorOptions() ?? collect();
-                        @endphp
+                    @php
+                        $lensFrameCtx = $this->getLastNonOpticalCartContext();
+                        $lensFrameProduct = $lensFrameCtx ? \App\Models\Product::query()->with('attachedProductOptions')->find($lensFrameCtx['item']['product_id'] ?? null) : null;
+                        $lensSizes = $lensFrameProduct?->posSelectableSizeOptions($this->branchId, $this->lensFrameColorOptionId) ?? collect();
+                        $lensColors = $lensFrameProduct?->posSelectableColorOptions($this->branchId, $this->lensFrameSizeOptionId) ?? collect();
+                    @endphp
                         <div class="pos-frame-variant-panel">
                             <h4>Frame size &amp; color (for lenses)</h4>
                             @if($lensFrameProduct && ($lensSizes->isNotEmpty() || $lensColors->isNotEmpty()))
@@ -743,25 +743,37 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                     <h3>{{ $vp->name }}</h3>
                     <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Choose size and/or color, then add to cart.</p>
                     @php
-                        $vSizes = $vp->availableSizeOptions();
-                        $vColors = $vp->availableColorOptions();
+                        $colorsAllModal = $vp->configuredColorOptions();
+                        $sizesAllModal = $vp->configuredSizeOptions();
+                        $vSizes = $vp->posSelectableSizeOptions($this->branchId, $this->variantPickColorId);
+                        $vColors = $vp->posSelectableColorOptions($this->branchId, $this->variantPickSizeId);
                     @endphp
-                    @if($vColors->count() > 1)
+                    @if($colorsAllModal->isNotEmpty())
                         <div class="pos-cart-field">
-                            <label>Color <span style="color: var(--danger-500);">*</span></label>
-                            <select wire:model.live="variantPickColorId">
-                                <option value="">— Select —</option>
+                            <label>Color @if($colorsAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif</label>
+                            @if($vColors->isEmpty())
+                                <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 0.5rem;">Choose a size first (if applicable), or no color matches current selection for this branch.</p>
+                            @endif
+                            <select wire:model.live="variantPickColorId" @if($vColors->isEmpty()) disabled @endif>
+                                @if($colorsAllModal->count() > 1)
+                                    <option value="">— Select —</option>
+                                @endif
                                 @foreach($vColors as $opt)
                                     <option value="{{ $opt->id }}">{{ $opt->name }}</option>
                                 @endforeach
                             </select>
                         </div>
                     @endif
-                    @if($vSizes->count() > 1)
+                    @if($sizesAllModal->isNotEmpty())
                         <div class="pos-cart-field">
-                            <label>Size <span style="color: var(--danger-500);">*</span></label>
-                            <select wire:model.live="variantPickSizeId">
-                                <option value="">— Select —</option>
+                            <label>Size @if($sizesAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif</label>
+                            @if($vSizes->isEmpty())
+                                <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 0.5rem;">Choose a color first (if applicable), or no size matches current selection for this branch.</p>
+                            @endif
+                            <select wire:model.live="variantPickSizeId" @if($vSizes->isEmpty()) disabled @endif>
+                                @if($sizesAllModal->count() > 1)
+                                    <option value="">— Select —</option>
+                                @endif
                                 @foreach($vSizes as $opt)
                                     <option value="{{ $opt->id }}">{{ $opt->name }}</option>
                                 @endforeach

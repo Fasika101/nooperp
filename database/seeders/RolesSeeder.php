@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use BezhanSalleh\FilamentShield\Support\Utils;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
@@ -28,6 +29,7 @@ class RolesSeeder extends Seeder
 
         $this->syncSuperAdminRole($guard);
         $this->syncPanelUserRole($guard);
+        $this->syncManagerRole($guard);
 
         $this->syncRole('sales', $this->salesPermissionNames(), $guard);
         $this->syncRole('inventory', $this->inventoryPermissionNames(), $guard);
@@ -78,6 +80,31 @@ class RolesSeeder extends Seeder
         $role->syncPermissions($this->permissionsByNames($names));
 
         $this->command->info('Role ['.$role->name.'] synced with '.count($names).' permissions.');
+    }
+
+    /**
+     * Cross-branch operational access without user/role admin, data wipe, or integration/marketing settings.
+     */
+    protected function syncManagerRole(string $guard): void
+    {
+        $role = Role::query()->firstOrCreate(
+            ['name' => User::ROLE_MANAGER, 'guard_name' => $guard],
+        );
+
+        $denylist = [
+            'View:DataWipePage',
+            'View:IntegrationsPage',
+            'View:LandingPageSettingsPage',
+        ];
+
+        $permissions = Permission::query()
+            ->where('name', 'not like', '%:Role')
+            ->whereNotIn('name', $denylist)
+            ->get();
+
+        $role->syncPermissions($permissions);
+
+        $this->command->info('Role ['.$role->name.'] synced ('.$permissions->count().' permissions; roles / wipe / integrations excluded).');
     }
 
     /**

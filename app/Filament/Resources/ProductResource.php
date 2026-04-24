@@ -620,7 +620,7 @@ class ProductResource extends Resource
                     ->query(function ($query, array $data) {
                         $branchId = $data['value'] ?? null;
 
-                        return $query->when($branchId, fn ($query) => $query->whereHas('branchStocks', fn ($query) => $query->where('branch_id', $branchId)->where('quantity', '>', 0)));
+                        return $query->when($branchId, fn ($query) => $query->whereHas('branchStocks', fn ($query) => $query->where('branch_id', $branchId)->where('quantity', '>=', 1)));
                     }),
                 Tables\Filters\SelectFilter::make('brand_option_id')
                     ->relationship('brand', 'name')

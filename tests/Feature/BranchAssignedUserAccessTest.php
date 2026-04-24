@@ -21,6 +21,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentType;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\StockPurchase;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -78,17 +79,17 @@ class BranchAssignedUserAccessTest extends TestCase
         ]);
 
         Role::query()->create([
-            'name' => 'super_admin',
+            'name' => User::ROLE_SUPER_ADMIN,
             'guard_name' => 'web',
         ]);
 
         $user = User::factory()->create([
             'branch_id' => $otherBranch->id,
         ]);
-        $user->assignRole('super_admin');
+        $user->assignRole(User::ROLE_SUPER_ADMIN);
         $user = $user->fresh();
 
-        $this->assertTrue($user->hasRole('super_admin'));
+        $this->assertTrue($user->hasRole(User::ROLE_SUPER_ADMIN));
 
         $this->actingAs($user);
 
@@ -98,6 +99,46 @@ class BranchAssignedUserAccessTest extends TestCase
         $this->assertFalse($page->isBranchLocked());
         $branchIds = $page->getBranches()->pluck('id')->all();
 
+        $this->assertContains($defaultBranch->id, $branchIds);
+        $this->assertContains($otherBranch->id, $branchIds);
+    }
+
+    public function test_manager_pos_keeps_branch_selection_available(): void
+    {
+        $defaultBranch = Branch::query()->create([
+            'name' => 'CMC',
+            'code' => 'cmc2',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $otherBranch = Branch::query()->create([
+            'name' => 'Megenagna',
+            'code' => 'megenagna2',
+            'is_active' => true,
+            'is_default' => false,
+        ]);
+
+        Role::query()->create([
+            'name' => User::ROLE_MANAGER,
+            'guard_name' => 'web',
+        ]);
+
+        $user = User::factory()->create([
+            'branch_id' => $otherBranch->id,
+        ]);
+        $user->assignRole(User::ROLE_MANAGER);
+        $user = $user->fresh();
+
+        $this->assertFalse($user->isBranchRestricted());
+
+        $this->actingAs($user);
+
+        $page = app(PosPage::class);
+        $page->mount();
+
+        $this->assertFalse($page->isBranchLocked());
+        $branchIds = $page->getBranches()->pluck('id')->all();
         $this->assertContains($defaultBranch->id, $branchIds);
         $this->assertContains($otherBranch->id, $branchIds);
     }
@@ -217,8 +258,11 @@ class BranchAssignedUserAccessTest extends TestCase
             'stock' => 0,
         ]);
 
+        $variant = ProductVariant::findOrCreateForProduct((int) $product->id, null, null);
+
         $stockPurchaseA = StockPurchase::query()->create([
             'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'branch_id' => $branchA->id,
             'bank_account_id' => $accountA->id,
             'expense_id' => $expenseA->id,
@@ -232,6 +276,7 @@ class BranchAssignedUserAccessTest extends TestCase
 
         $stockPurchaseB = StockPurchase::query()->create([
             'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
             'branch_id' => $branchB->id,
             'bank_account_id' => $accountB->id,
             'expense_id' => $expenseB->id,

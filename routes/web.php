@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\PrescriptionController;
 use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\TelegramBotAttachmentController;
 use App\Http\Controllers\TelegramBotWebhookController;
@@ -24,6 +25,10 @@ Route::get('/', function () {
 Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('/receipt/{order}', [ReceiptController::class, 'show'])->name('receipt.show');
     Route::get('/receipt/{order}/pdf', [ReceiptController::class, 'pdf'])->name('receipt.pdf');
+
+    Route::get('/prescription/{prescription}/print', [PrescriptionController::class, 'print'])->name('prescription.print');
+    Route::get('/prescription/{prescription}/pdf', [PrescriptionController::class, 'pdf'])->name('prescription.pdf');
+
     Route::get('/telegram-bot/messages/{message}/attachment', TelegramBotAttachmentController::class)
         ->name('telegram.bot.message.attachment');
 });
