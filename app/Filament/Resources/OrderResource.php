@@ -64,7 +64,7 @@ class OrderResource extends Resource
                     ->schema([
                         Select::make('affiliate_id')
                             ->label('Affiliate')
-                            ->relationship('affiliate', 'name', fn ($q) => $q->orderBy('name'))
+                            ->relationship('affiliate', 'name', fn ($query) => $query->orderBy('name'))
                             ->searchable()
                             ->preload()
                             ->placeholder('None')

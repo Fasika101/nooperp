@@ -38,7 +38,14 @@
    - `AffiliatePayoutsRelationManager`: list payout expenses, **Record payout** → new expense with type + affiliate prefilled; each payout is a normal **Expense** so existing `ExpenseObserver` posts the **bank withdrawal**.
    - Affiliate **view** infolist: **Total paid (payout expenses)** and **Balance (earned minus paid)**.
 
+9. **Commission settlements (per-order “paid” tracking)**
+   - Migration `2026_04_25_120000_create_affiliate_commission_settlements_table.php`: `affiliate_commission_settlements` (`expense_id`, `order_id`, `amount`, unique per expense+order; cascades when expense or order is deleted).
+   - `AffiliateCommissionSettlement` model; `Order::affiliateCommissionSettlements()`, `Expense::affiliateCommissionSettlements()`.
+   - `AffiliateCommissionSettlementService::settle()`: validates same affiliate + branch, locks orders, creates one **Affiliate commission payout** expense (amount = sum of **remaining** commission per order), then one settlement row per order for the **full remaining** slice. Existing `ExpenseObserver` records the bank withdrawal.
+   - **Finance → Unsettled affiliate commissions** (`UnsettledAffiliateCommissionsPage`, nav after **Accounts receivable**): lists completed affiliate orders where commission remaining &gt; 0; filter by affiliate; **Settle selected** bulk action (payout date, pay-from account, notes). Manual expenses without settlement rows do **not** reduce per-order remaining on this list.
+   - **Affiliate → Earning history** table: **Settled** / **Remaining** columns via `withSum` on settlements.
+
 ## Follow-ups (optional)
 
-- Run `php artisan shield:generate` (or your Shield workflow) so roles get permissions for **Affiliates** and staff can open the new resource in production.
+- Run `php artisan shield:generate` (or your Shield workflow) so roles get permissions for **Affiliates**, **Unsettled affiliate commissions**, and related pages in production.
 - If the POS user role should only use the modal and not the Affiliates CRUD, adjust Shield policies accordingly.

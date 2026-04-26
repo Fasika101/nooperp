@@ -110,4 +110,9 @@ class Order extends Model
     {
         return $this->belongsTo(Affiliate::class);
     }
+
+    public function affiliateCommissionSettlements(): HasMany
+    {
+        return $this->hasMany(AffiliateCommissionSettlement::class);
+    }
 }

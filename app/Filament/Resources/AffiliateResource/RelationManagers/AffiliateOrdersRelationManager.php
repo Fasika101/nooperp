@@ -24,6 +24,7 @@ class AffiliateOrdersRelationManager extends RelationManager
             ->recordTitleAttribute('id')
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
                 ->where('status', 'completed')
+                ->withSum('affiliateCommissionSettlements as commission_settled_sum', 'amount')
                 ->orderByDesc('created_at'))
             ->columns([
                 Tables\Columns\TextColumn::make('id')
@@ -47,6 +48,20 @@ class AffiliateOrdersRelationManager extends RelationManager
                     ->label('Affiliate cut')
                     ->money($currency)
                     ->sortable(),
+                Tables\Columns\TextColumn::make('commission_settled_sum')
+                    ->label('Settled')
+                    ->money($currency)
+                    ->placeholder('0')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('commission_remaining')
+                    ->label('Remaining')
+                    ->money($currency)
+                    ->state(function (Order $record): float {
+                        $settled = (float) ($record->commission_settled_sum ?? 0);
+
+                        return round(max(0, (float) $record->affiliate_commission_amount - $settled), 2);
+                    })
+                    ->color('warning'),
                 Tables\Columns\TextColumn::make('affiliate_commission_type')
                     ->label('Mode')
                     ->formatStateUsing(fn (?string $state): string => match ($state) {

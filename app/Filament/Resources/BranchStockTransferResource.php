@@ -43,7 +43,7 @@ class BranchStockTransferResource extends Resource
             ->components([
                 Select::make('product_id')
                     ->label('Product')
-                    ->relationship('product', 'name', fn (Builder $query) => $query->where('is_service', false)->orderBy('name'))
+                    ->relationship('product', 'name', fn ($query) => $query->where('is_service', false)->orderBy('name'))
                     ->required()
                     ->searchable()
                     ->preload()

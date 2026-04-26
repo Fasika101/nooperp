@@ -59,7 +59,7 @@ class ExpenseResource extends Resource
                     ->required()
                     ->default(now()),
                 Select::make('expense_type_id')
-                    ->relationship('expenseType', 'name', fn (Builder $query) => $query->where('is_active', true)->orderBy('name'))
+                    ->relationship('expenseType', 'name', fn ($query) => $query->where('is_active', true)->orderBy('name'))
                     ->required()
                     ->searchable()
                     ->preload()
@@ -77,7 +77,7 @@ class ExpenseResource extends Resource
                     ->relationship(
                         'employee',
                         'full_name',
-                        fn (Builder $query) => $query
+                        fn ($query) => $query
                             ->where('employment_status', '!=', Employee::STATUS_TERMINATED)
                             ->orderBy('full_name'),
                     )
@@ -117,7 +117,7 @@ class ExpenseResource extends Resource
                     ->relationship(
                         'affiliate',
                         'name',
-                        fn (Builder $query) => $query->where('is_active', true)->orderBy('name'),
+                        fn ($query) => $query->where('is_active', true)->orderBy('name'),
                     )
                     ->searchable()
                     ->preload()
@@ -275,12 +275,12 @@ class ExpenseResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('employee_id')
                     ->label('Employee')
-                    ->relationship('employee', 'full_name', fn (Builder $query) => $query->orderBy('full_name'))
+                    ->relationship('employee', 'full_name', fn ($query) => $query->orderBy('full_name'))
                     ->searchable()
                     ->preload(),
                 Tables\Filters\SelectFilter::make('affiliate_id')
                     ->label('Affiliate')
-                    ->relationship('affiliate', 'name', fn (Builder $query) => $query->orderBy('name'))
+                    ->relationship('affiliate', 'name', fn ($query) => $query->orderBy('name'))
                     ->searchable()
                     ->preload(),
             ])

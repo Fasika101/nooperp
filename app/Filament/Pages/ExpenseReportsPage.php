@@ -114,7 +114,7 @@ class ExpenseReportsPage extends Page implements HasTable
                     ->relationship(
                         'expenseType',
                         'name',
-                        fn (Builder $query) => $query->where('is_active', true)->orderBy('name'),
+                        fn ($query) => $query->where('is_active', true)->orderBy('name'),
                     )
                     ->searchable()
                     ->preload()

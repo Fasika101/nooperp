@@ -16,6 +16,7 @@ use App\Filament\Pages\PosPage;
 use App\Filament\Pages\ProfitLossReportPage;
 use App\Filament\Pages\SettingsPage;
 use App\Filament\Pages\TelegramCrmReportPage;
+use App\Filament\Pages\UnsettledAffiliateCommissionsPage;
 use App\Filament\Widgets\LibaStatsOverviewWidget;
 use App\Filament\Widgets\RevenueChartWidget;
 use App\Filament\Widgets\SalesChartWidget;
@@ -82,6 +83,7 @@ class AdminPanelProvider extends PanelProvider
                 ProfitLossReportPage::class,
                 ExpenseReportsPage::class,
                 AccountsReceivablePage::class,
+                UnsettledAffiliateCommissionsPage::class,
                 SettingsPage::class,
                 LandingPageSettingsPage::class,
                 IntegrationsPage::class,

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Expense extends Model
 {
@@ -50,6 +51,11 @@ class Expense extends Model
     public function affiliate(): BelongsTo
     {
         return $this->belongsTo(Affiliate::class);
+    }
+
+    public function affiliateCommissionSettlements(): HasMany
+    {
+        return $this->hasMany(AffiliateCommissionSettlement::class);
     }
 
     protected static function booted(): void
