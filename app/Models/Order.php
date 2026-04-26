@@ -17,6 +17,10 @@ class Order extends Model
     protected $fillable = [
         'customer_id',
         'branch_id',
+        'affiliate_id',
+        'affiliate_commission_type',
+        'affiliate_commission_rate',
+        'affiliate_commission_amount',
         'total_amount',
         'amount_paid',
         'balance_due',
@@ -39,6 +43,8 @@ class Order extends Model
             'discount_amount' => 'decimal:2',
             'shipping_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
+            'affiliate_commission_rate' => 'decimal:2',
+            'affiliate_commission_amount' => 'decimal:2',
             'due_date' => 'date',
         ];
     }
@@ -98,5 +104,10 @@ class Order extends Model
     public function taxType(): BelongsTo
     {
         return $this->belongsTo(TaxType::class, 'tax_type_id');
+    }
+
+    public function affiliate(): BelongsTo
+    {
+        return $this->belongsTo(Affiliate::class);
     }
 }

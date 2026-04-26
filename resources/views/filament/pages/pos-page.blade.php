@@ -236,7 +236,22 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 
 .pos-modal-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 1rem; }
 .pos-modal { width: 100%; max-width: 22rem; background: white; border-radius: 0.75rem; padding: 1.25rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+.pos-modal--wide { max-width: 32rem; max-height: min(90vh, 36rem); overflow-y: auto; }
 .dark .pos-modal { background: rgb(31 41 55); }
+.pos-affiliate-pill { font-size: 0.75rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); color: rgb(30 64 175); }
+.dark .pos-affiliate-pill { background: rgba(59, 130, 246, 0.12); border-color: rgba(96, 165, 250, 0.3); color: rgb(191 219 254); }
+.pos-affiliate-pill .row { display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.pos-affiliate-actions { display: flex; gap: 0.375rem; margin-top: 0.5rem; flex-wrap: wrap; }
+.pos-affiliate-actions button { font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 0.375rem; border: 1px solid rgb(209 213 219); background: white; cursor: pointer; }
+.dark .pos-affiliate-actions button { border-color: rgb(75 85 99); background: rgb(55 65 81); color: rgb(229 231 235); }
+.pos-affiliate-list { max-height: 10rem; overflow-y: auto; margin: 0.5rem 0; border: 1px solid rgb(229 231 235); border-radius: 0.5rem; }
+.dark .pos-affiliate-list { border-color: rgb(75 85 99); }
+.pos-affiliate-list button { width: 100%; text-align: left; padding: 0.5rem 0.75rem; font-size: 0.8125rem; border: none; background: white; border-bottom: 1px solid rgb(243 244 246); cursor: pointer; }
+.dark .pos-affiliate-list button { background: rgb(31 41 55); border-color: rgba(255,255,255,0.06); color: white; }
+.pos-affiliate-list button:last-child { border-bottom: none; }
+.pos-affiliate-list button:hover { background: rgb(249 250 251); }
+.dark .pos-affiliate-list button:hover { background: rgb(55 65 81); }
+.pos-affiliate-list button.active { background: rgba(59, 130, 246, 0.1); }
 .pos-modal h3 { margin: 0 0 1rem; font-size: 1rem; font-weight: 600; color: rgb(17 24 39); }
 .dark .pos-modal h3 { color: white; }
 .pos-modal-actions { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
@@ -683,6 +698,40 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                         </select>
                     </div>
 
+                    {{-- Affiliate (optional) --}}
+                    <div class="pos-cart-field">
+                        <label>Affiliate <span style="color: rgb(107 114 128); font-weight: 400;">(optional)</span></label>
+                        @if($affiliateApplied && $this->getSelectedAffiliate())
+                            <div class="pos-affiliate-pill">
+                                <div class="row">
+                                    <span><strong>{{ $this->getSelectedAffiliate()->name }}</strong>
+                                        @if($affiliateCommissionType === 'add_percent')
+                                            · Add {{ rtrim(rtrim(number_format((float) $affiliateCommissionRate, 2, '.', ''), '0'), '.') }}% to sale
+                                        @else
+                                            · Deduct {{ rtrim(rtrim(number_format((float) $affiliateCommissionRate, 2, '.', ''), '0'), '.') }}% (tracked)
+                                        @endif
+                                    </span>
+                                </div>
+                                @if($this->getAffiliateCommissionAmount() > 0)
+                                    <div style="margin-top: 0.35rem; font-size: 0.6875rem; opacity: 0.9;">
+                                        Commission: {{ \Illuminate\Support\Number::currency($this->getAffiliateCommissionAmount(), $this->getDefaultCurrency()) }}
+                                    </div>
+                                @endif
+                                <div class="pos-affiliate-actions">
+                                    <button type="button" wire:click="openAffiliateModal">Change</button>
+                                    <button type="button" wire:click="clearAffiliateForSale">Remove</button>
+                                </div>
+                            </div>
+                        @else
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                                <x-filament::button type="button" size="sm" color="gray" wire:click="openAffiliateModal" icon="heroicon-o-user-group">
+                                    Set affiliate
+                                </x-filament::button>
+                                <span style="font-size: 0.75rem; color: rgb(107 114 128);">Track referral commission on this sale</span>
+                            </div>
+                        @endif
+                    </div>
+
                     {{-- Payment Type --}}
                     <div class="pos-cart-field">
                         <label>Payment Type <span style="color: var(--danger-500);">*</span></label>
@@ -719,6 +768,28 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                             <div class="pos-calc-row">
                                 <span>Tax</span>
                                 <span>{{ \Illuminate\Support\Number::currency($this->getTaxValue(), $this->getDefaultCurrency()) }}</span>
+                            </div>
+                        @endif
+                        @if($affiliateApplied && $this->getAffiliateCommissionAmount() > 0)
+                            <div class="pos-calc-row">
+                                <span>Amount before affiliate</span>
+                                <span>{{ \Illuminate\Support\Number::currency($this->getPosOrderBaseTotal(), $this->getDefaultCurrency()) }}</span>
+                            </div>
+                            <div class="pos-calc-row">
+                                <span>
+                                    @if($affiliateCommissionType === 'add_percent')
+                                        Affiliate add-on
+                                    @else
+                                        Affiliate commission (tracked)
+                                    @endif
+                                </span>
+                                <span>
+                                    @if($affiliateCommissionType === 'add_percent')
+                                        +{{ \Illuminate\Support\Number::currency($this->getAffiliateCommissionAmount(), $this->getDefaultCurrency()) }}
+                                    @else
+                                        {{ \Illuminate\Support\Number::currency($this->getAffiliateCommissionAmount(), $this->getDefaultCurrency()) }}
+                                    @endif
+                                </span>
                             </div>
                         @endif
                         <div class="pos-calc-row total">
@@ -787,5 +858,94 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                 </div>
             </div>
         @endif
+    @endif
+
+    @if($affiliateModalOpen)
+        <div class="pos-modal-overlay" wire:click.self="closeAffiliateModal" wire:key="pos-affiliate-modal">
+            <div class="pos-modal pos-modal--wide" wire:click.stop>
+                <h3>Affiliate for this sale</h3>
+                <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Search or pick an affiliate, set the rate, then Apply. Or add a new affiliate below.</p>
+
+                <div class="pos-cart-field">
+                    <label>Search</label>
+                    <input type="text" wire:model.live.debounce.200ms="affiliateSearch" placeholder="Name, phone, or code" />
+                </div>
+
+                <div class="pos-affiliate-list" wire:key="affiliate-list-{{ $affiliateSearch }}">
+                    @forelse($this->getAffiliatesForModal() as $aff)
+                        <button
+                            type="button"
+                            class="{{ (int) $affiliateId === (int) $aff->id ? 'active' : '' }}"
+                            wire:click="selectAffiliateFromModal({{ $aff->id }})"
+                        >
+                            <strong>{{ $aff->name }}</strong>
+                            @if($aff->phone){{ ' · '.$aff->phone }}@endif
+                            @if($aff->code){{ ' · '.$aff->code }}@endif
+                        </button>
+                    @empty
+                        <div style="padding: 0.75rem; font-size: 0.8125rem; color: rgb(107 114 128);">No affiliates match. Add one below or clear the search.</div>
+                    @endforelse
+                </div>
+
+                <div class="pos-cart-field pos-cart-field-row">
+                    <div class="pos-cart-field" style="flex: 1;">
+                        <label>Mode</label>
+                        <select wire:model.live="affiliateCommissionType">
+                            <option value="deduct_percent">Deduct % from sale (customer pays normal total)</option>
+                            <option value="add_percent">Add % to sale (customer pays extra)</option>
+                        </select>
+                    </div>
+                    <div class="pos-cart-field" style="flex: 1;">
+                        <label>Rate (%)</label>
+                        <input type="number" wire:model.live="affiliateCommissionRate" min="0" max="100" step="0.1" placeholder="0" />
+                    </div>
+                </div>
+
+                <div class="pos-modal-actions">
+                    <button type="button" class="primary" wire:click="applyAffiliateFromModal">Apply</button>
+                    <button type="button" wire:click="closeAffiliateModal">Cancel</button>
+                </div>
+
+                <p style="font-size: 0.75rem; margin: 1rem 0 0.5rem; font-weight: 600; color: rgb(55 65 81);">Add new affiliate</p>
+                <div class="pos-cart-field">
+                    <label>
+                        <input type="checkbox" wire:model.live="affiliateShowQuickAdd" style="width: auto; margin-right: 0.25rem;" />
+                        Show form
+                    </label>
+                </div>
+                @if($affiliateShowQuickAdd)
+                    <div class="pos-cart-field">
+                        <label>Name <span style="color: var(--danger-500);">*</span></label>
+                        <input type="text" wire:model="newAffiliateName" placeholder="Full name" />
+                    </div>
+                    <div class="pos-cart-field pos-cart-field-row">
+                        <div class="pos-cart-field">
+                            <label>Phone</label>
+                            <input type="text" wire:model="newAffiliatePhone" placeholder="Optional" />
+                        </div>
+                        <div class="pos-cart-field">
+                            <label>Code</label>
+                            <input type="text" wire:model="newAffiliateCode" placeholder="Optional" />
+                        </div>
+                    </div>
+                    <div class="pos-cart-field pos-cart-field-row">
+                        <div class="pos-cart-field">
+                            <label>Default mode</label>
+                            <select wire:model="newAffiliateCommissionType">
+                                <option value="deduct_percent">Deduct %</option>
+                                <option value="add_percent">Add %</option>
+                            </select>
+                        </div>
+                        <div class="pos-cart-field">
+                            <label>Default rate (%)</label>
+                            <input type="number" wire:model="newAffiliateCommissionRate" min="0" max="100" step="0.1" />
+                        </div>
+                    </div>
+                    <div class="pos-modal-actions" style="margin-top: 0.5rem;">
+                        <button type="button" class="primary" wire:click="createAffiliateFromModal">Create & use for this sale</button>
+                    </div>
+                @endif
+            </div>
+        </div>
     @endif
 </x-filament-panels::page>

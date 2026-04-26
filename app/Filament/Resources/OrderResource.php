@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\OrderResource\Pages;
 use App\Filament\Resources\OrderResource\RelationManagers\OrderItemsRelationManager;
 use App\Filament\Resources\OrderResource\RelationManagers\PaymentsRelationManager;
+use App\Models\Affiliate;
 use App\Models\Order;
 use App\Models\Setting;
 use Filament\Actions\Action;
@@ -59,6 +60,35 @@ class OrderResource extends Resource
                             ->placeholder('None'),
                     ])
                     ->columns(2),
+                Section::make('Affiliate')
+                    ->schema([
+                        Select::make('affiliate_id')
+                            ->label('Affiliate')
+                            ->relationship('affiliate', 'name', fn ($q) => $q->orderBy('name'))
+                            ->searchable()
+                            ->preload()
+                            ->placeholder('None')
+                            ->disabled(),
+                        Select::make('affiliate_commission_type')
+                            ->label('Commission mode')
+                            ->options([
+                                Affiliate::COMMISSION_DEDUCT_PERCENT => 'Deduct % (customer pays pre-affiliate total)',
+                                Affiliate::COMMISSION_ADD_PERCENT => 'Add % to sale (customer pays base + add-on)',
+                            ])
+                            ->disabled(),
+                        TextInput::make('affiliate_commission_rate')
+                            ->label('Rate (%)')
+                            ->numeric()
+                            ->suffix('%')
+                            ->disabled(),
+                        TextInput::make('affiliate_commission_amount')
+                            ->label('Affiliate cut')
+                            ->prefix($currency)
+                            ->disabled(),
+                    ])
+                    ->columns(2)
+                    ->visible(fn (?Order $record): bool => (bool) ($record?->affiliate_id))
+                    ->collapsed(),
                 Section::make('Amounts')
                     ->schema([
                         TextInput::make('total_amount')
@@ -110,6 +140,18 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('customer.name')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('affiliate.name')
+                    ->label('Affiliate')
+                    ->searchable()
+                    ->sortable()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('affiliate_commission_amount')
+                    ->label('Aff. cut')
+                    ->money($currency)
+                    ->sortable()
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('total_amount')
                     ->money($currency)
                     ->sortable(),

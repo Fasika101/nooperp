@@ -9,6 +9,8 @@ class ExpenseType extends Model
 {
     public const NAME_SALARIES = 'Salaries';
 
+    public const NAME_AFFILIATE_PAYOUT = 'Affiliate commission payout';
+
     protected $fillable = [
         'name',
         'is_active',
@@ -43,5 +45,10 @@ class ExpenseType extends Model
     public static function salariesTypeId(): ?int
     {
         return once(fn (): ?int => static::query()->where('name', self::NAME_SALARIES)->value('id'));
+    }
+
+    public static function affiliatePayoutTypeId(): ?int
+    {
+        return once(fn (): ?int => static::query()->where('name', self::NAME_AFFILIATE_PAYOUT)->value('id'));
     }
 }

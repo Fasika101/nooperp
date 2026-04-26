@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Affiliate;
 use App\Models\Branch;
 use App\Models\BranchProductStock;
 use App\Models\Category;
@@ -81,6 +82,30 @@ class PosPage extends Page
 
     /** Optional address for an existing selected customer when their profile has no address (saved on checkout). */
     public string $selectedCustomerAddressOverride = '';
+
+    public bool $affiliateModalOpen = false;
+
+    public string $affiliateSearch = '';
+
+    public ?int $affiliateId = null;
+
+    public string $affiliateCommissionType = 'deduct_percent';
+
+    public string $affiliateCommissionRate = '0';
+
+    public bool $affiliateApplied = false;
+
+    public bool $affiliateShowQuickAdd = false;
+
+    public string $newAffiliateName = '';
+
+    public string $newAffiliatePhone = '';
+
+    public string $newAffiliateCode = '';
+
+    public string $newAffiliateCommissionRate = '0';
+
+    public string $newAffiliateCommissionType = 'deduct_percent';
 
     /** products | customize */
     public string $posAreaTab = 'products';
@@ -569,6 +594,36 @@ class PosPage extends Page
     }
 
     /**
+     * POS uses "-" / "—" for unknown Rx values; DB columns are int/decimal and must not receive those strings.
+     */
+    protected function nullableRxInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === '-' || $value === '—') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            return (int) round((float) $value);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return null|numeric-string
+     */
+    protected function nullableRxDecimal(mixed $value): ?string
+    {
+        if ($value === null || $value === '' || $value === '-' || $value === '—') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            return (string) $value;
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<string, mixed>  $opticalMeta
      */
     protected function persistOrderItemRxExtras(OrderItem $orderItem, array $opticalMeta): void
@@ -590,22 +645,25 @@ class PosPage extends Page
 
         // Save to prescriptions table if it's a prescription line
         if (($opticalMeta['route'] ?? '') === 'prescription' && $orderItem->order?->customer_id) {
+            $os = $opticalMeta['os'] ?? [];
+            $od = $opticalMeta['od'] ?? [];
+            $pd = $opticalMeta['pd'] ?? [];
             $prescription = Prescription::create([
                 'customer_id' => $orderItem->order->customer_id,
                 'order_item_id' => $orderItem->id,
                 'vision' => $opticalMeta['vision'] ?? null,
-                'left_eye_sphere' => $opticalMeta['os']['sph'] ?? null,
-                'left_eye_cylinder' => $opticalMeta['os']['cyl'] ?? null,
-                'left_eye_axis' => $opticalMeta['os']['axis'] ?? null,
-                'left_eye_add' => $opticalMeta['os']['add'] ?? null,
-                'right_eye_sphere' => $opticalMeta['od']['sph'] ?? null,
-                'right_eye_cylinder' => $opticalMeta['od']['cyl'] ?? null,
-                'right_eye_axis' => $opticalMeta['od']['axis'] ?? null,
-                'right_eye_add' => $opticalMeta['od']['add'] ?? null,
-                'pd_mode' => $opticalMeta['pd']['mode'] ?? null,
-                'pd_single' => $opticalMeta['pd']['single'] ?? null,
-                'pd_right' => $opticalMeta['pd']['right'] ?? null,
-                'pd_left' => $opticalMeta['pd']['left'] ?? null,
+                'left_eye_sphere' => $this->nullableRxDecimal($os['sph'] ?? null),
+                'left_eye_cylinder' => $this->nullableRxDecimal($os['cyl'] ?? null),
+                'left_eye_axis' => $this->nullableRxInt($os['axis'] ?? null),
+                'left_eye_add' => $this->nullableRxDecimal($os['add'] ?? null),
+                'right_eye_sphere' => $this->nullableRxDecimal($od['sph'] ?? null),
+                'right_eye_cylinder' => $this->nullableRxDecimal($od['cyl'] ?? null),
+                'right_eye_axis' => $this->nullableRxInt($od['axis'] ?? null),
+                'right_eye_add' => $this->nullableRxDecimal($od['add'] ?? null),
+                'pd_mode' => $pd['mode'] ?? null,
+                'pd_single' => $this->nullableRxDecimal($pd['single'] ?? null),
+                'pd_right' => $this->nullableRxDecimal($pd['right'] ?? null),
+                'pd_left' => $this->nullableRxDecimal($pd['left'] ?? null),
                 'notes' => "Created from POS Order #{$orderItem->order->id}",
             ]);
 
@@ -686,11 +744,200 @@ class PosPage extends Page
         return round($this->getDiscountedSubtotal() * ($taxType->rate / 100), 2);
     }
 
-    public function getFinalTotal(): float
+    /**
+     * Subtotal after discount, plus shipping and tax (before affiliate add-on, if any).
+     */
+    public function getPosOrderBaseTotal(): float
     {
         $data = $this->posData;
 
         return $this->getDiscountedSubtotal() + (float) ($data['shippingAmount'] ?? 0) + $this->getTaxValue();
+    }
+
+    public function getAffiliateCommissionAmount(): float
+    {
+        if (! $this->affiliateApplied || ! $this->affiliateId) {
+            return 0.0;
+        }
+        $base = $this->getPosOrderBaseTotal();
+        $rate = (float) $this->affiliateCommissionRate;
+        if ($rate <= 0) {
+            return 0.0;
+        }
+
+        return round($base * ($rate / 100), 2);
+    }
+
+    public function getFinalTotal(): float
+    {
+        $base = $this->getPosOrderBaseTotal();
+        if (
+            $this->affiliateApplied
+            && $this->affiliateId
+            && $this->affiliateCommissionType === Affiliate::COMMISSION_ADD_PERCENT
+        ) {
+            return round($base + $this->getAffiliateCommissionAmount(), 2);
+        }
+
+        return $base;
+    }
+
+    public function getAffiliatesForModal()
+    {
+        $term = trim($this->affiliateSearch);
+        $like = $term === '' ? null : $this->affiliateSearchLikePattern($term);
+
+        return Affiliate::query()
+            ->where('is_active', true)
+            ->when($term !== '' && $like, function ($q) use ($like) {
+                $q->where(function ($q) use ($like) {
+                    $q->where('name', 'like', $like)
+                        ->orWhere('phone', 'like', $like)
+                        ->orWhere('code', 'like', $like);
+                });
+            })
+            ->orderBy('name')
+            ->limit(40)
+            ->get();
+    }
+
+    /**
+     * Escape % and _ for SQL LIKE (affiliate search in POS modal).
+     */
+    protected function affiliateSearchLikePattern(string $search): string
+    {
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], trim($search));
+
+        return '%'.$escaped.'%';
+    }
+
+    public function getSelectedAffiliate(): ?Affiliate
+    {
+        if (! $this->affiliateId) {
+            return null;
+        }
+
+        return Affiliate::query()->find($this->affiliateId);
+    }
+
+    public function openAffiliateModal(): void
+    {
+        $this->affiliateModalOpen = true;
+    }
+
+    public function closeAffiliateModal(): void
+    {
+        $this->affiliateModalOpen = false;
+    }
+
+    public function selectAffiliateFromModal(int $id): void
+    {
+        $affiliate = Affiliate::query()->where('is_active', true)->find($id);
+        if (! $affiliate) {
+            Notification::make()
+                ->warning()
+                ->title('Affiliate not found')
+                ->send();
+
+            return;
+        }
+        $this->affiliateId = $affiliate->id;
+        $this->affiliateCommissionType = in_array(
+            $affiliate->default_commission_type,
+            [Affiliate::COMMISSION_ADD_PERCENT, Affiliate::COMMISSION_DEDUCT_PERCENT],
+            true
+        ) ? $affiliate->default_commission_type : Affiliate::COMMISSION_DEDUCT_PERCENT;
+        $this->affiliateCommissionRate = (string) (float) $affiliate->default_commission_rate;
+    }
+
+    public function applyAffiliateFromModal(): void
+    {
+        if (! $this->affiliateId) {
+            Notification::make()
+                ->warning()
+                ->title('Select an affiliate')
+                ->body('Choose an affiliate from the list, or add a new one.')
+                ->send();
+
+            return;
+        }
+        if ((float) $this->affiliateCommissionRate <= 0) {
+            Notification::make()
+                ->warning()
+                ->title('Commission rate required')
+                ->body('Enter a percentage greater than zero.')
+                ->send();
+
+            return;
+        }
+        if (! in_array(
+            $this->affiliateCommissionType,
+            [Affiliate::COMMISSION_ADD_PERCENT, Affiliate::COMMISSION_DEDUCT_PERCENT],
+            true
+        )) {
+            $this->affiliateCommissionType = Affiliate::COMMISSION_DEDUCT_PERCENT;
+        }
+        $this->affiliateApplied = true;
+        $this->affiliateModalOpen = false;
+    }
+
+    public function clearAffiliateForSale(): void
+    {
+        $this->affiliateId = null;
+        $this->affiliateCommissionType = Affiliate::COMMISSION_DEDUCT_PERCENT;
+        $this->affiliateCommissionRate = '0';
+        $this->affiliateApplied = false;
+        $this->affiliateSearch = '';
+    }
+
+    public function createAffiliateFromModal(): void
+    {
+        $name = trim($this->newAffiliateName);
+        if ($name === '') {
+            Notification::make()
+                ->warning()
+                ->title('Name required')
+                ->body('Enter a name for the new affiliate.')
+                ->send();
+
+            return;
+        }
+        if ((float) $this->newAffiliateCommissionRate <= 0) {
+            Notification::make()
+                ->warning()
+                ->title('Default commission rate required')
+                ->body('Enter a default percentage greater than zero.')
+                ->send();
+
+            return;
+        }
+        $type = $this->newAffiliateCommissionType === Affiliate::COMMISSION_ADD_PERCENT
+            ? Affiliate::COMMISSION_ADD_PERCENT
+            : Affiliate::COMMISSION_DEDUCT_PERCENT;
+        $affiliate = Affiliate::create([
+            'name' => $name,
+            'phone' => $this->newAffiliatePhone !== '' ? trim($this->newAffiliatePhone) : null,
+            'code' => $this->newAffiliateCode !== '' ? trim($this->newAffiliateCode) : null,
+            'default_commission_type' => $type,
+            'default_commission_rate' => round((float) $this->newAffiliateCommissionRate, 2),
+            'is_active' => true,
+        ]);
+        $this->affiliateId = $affiliate->id;
+        $this->affiliateCommissionType = $type;
+        $this->affiliateCommissionRate = (string) (float) $affiliate->default_commission_rate;
+        $this->affiliateApplied = true;
+        $this->affiliateModalOpen = false;
+        $this->affiliateShowQuickAdd = false;
+        $this->newAffiliateName = '';
+        $this->newAffiliatePhone = '';
+        $this->newAffiliateCode = '';
+        $this->newAffiliateCommissionRate = '0';
+        $this->newAffiliateCommissionType = Affiliate::COMMISSION_DEDUCT_PERCENT;
+        Notification::make()
+            ->success()
+            ->title('Affiliate created')
+            ->body('They are set for this sale. Review totals, then complete the sale.')
+            ->send();
     }
 
     public function getCartCount(): int
@@ -1012,6 +1259,28 @@ class PosPage extends Page
             }
         }
 
+        if ($this->affiliateApplied) {
+            if (! $this->affiliateId || (float) $this->affiliateCommissionRate <= 0) {
+                Notification::make()
+                    ->warning()
+                    ->title('Affiliate incomplete')
+                    ->body('Open the affiliate modal, select an affiliate, set the rate, and click Apply.')
+                    ->send();
+
+                return;
+            }
+            $affiliate = Affiliate::query()->where('is_active', true)->whereKey($this->affiliateId)->first();
+            if (! $affiliate) {
+                Notification::make()
+                    ->warning()
+                    ->title('Invalid affiliate')
+                    ->body('The selected affiliate is inactive or was removed. Clear affiliate or pick another.')
+                    ->send();
+
+                return;
+            }
+        }
+
         try {
             $order = null;
             DB::transaction(function () use ($customerId, $paymentTypeId, $paymentType, &$order) {
@@ -1039,6 +1308,17 @@ class PosPage extends Page
                     $orderData['amount_paid'] = 0;
                     $orderData['balance_due'] = $totalAmount;
                     $orderData['payment_status'] = Order::PAYMENT_STATUS_UNPAID;
+                }
+
+                if ($this->affiliateApplied && $this->affiliateId) {
+                    $orderData['affiliate_id'] = $this->affiliateId;
+                    $orderData['affiliate_commission_type'] = in_array(
+                        $this->affiliateCommissionType,
+                        [Affiliate::COMMISSION_ADD_PERCENT, Affiliate::COMMISSION_DEDUCT_PERCENT],
+                        true
+                    ) ? $this->affiliateCommissionType : Affiliate::COMMISSION_DEDUCT_PERCENT;
+                    $orderData['affiliate_commission_rate'] = round((float) $this->affiliateCommissionRate, 2);
+                    $orderData['affiliate_commission_amount'] = $this->getAffiliateCommissionAmount();
                 }
 
                 $order = Order::create($orderData);
@@ -1147,6 +1427,9 @@ class PosPage extends Page
                 'taxTypeId' => null,
                 'paymentTypeId' => null,
             ];
+            $this->clearAffiliateForSale();
+            $this->affiliateModalOpen = false;
+            $this->affiliateShowQuickAdd = false;
 
             Notification::make()
                 ->success()
@@ -1183,6 +1466,9 @@ class PosPage extends Page
             'taxTypeId' => null,
             'paymentTypeId' => null,
         ];
+        $this->clearAffiliateForSale();
+        $this->affiliateModalOpen = false;
+        $this->affiliateShowQuickAdd = false;
     }
 
     public function updatedPosAreaTab(string $value): void

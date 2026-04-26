@@ -20,6 +20,10 @@ class EditExpense extends EditRecord
         if (! $sid || (int) ($data['expense_type_id'] ?? 0) !== $sid) {
             $data['employee_id'] = null;
         }
+        $pid = ExpenseType::affiliatePayoutTypeId();
+        if (! $pid || (int) ($data['expense_type_id'] ?? 0) !== $pid) {
+            $data['affiliate_id'] = null;
+        }
 
         return $data;
     }

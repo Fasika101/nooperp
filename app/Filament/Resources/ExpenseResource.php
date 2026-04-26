@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ExpenseResource\Pages;
+use App\Models\Affiliate;
 use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\Employee;
@@ -111,6 +112,35 @@ class ExpenseResource extends Resource
                             $set('bank_account_id', $bankId);
                         }
                     }),
+                Select::make('affiliate_id')
+                    ->label('Affiliate')
+                    ->relationship(
+                        'affiliate',
+                        'name',
+                        fn (Builder $query) => $query->where('is_active', true)->orderBy('name'),
+                    )
+                    ->searchable()
+                    ->preload()
+                    ->visible(function (Get $get): bool {
+                        $pid = ExpenseType::affiliatePayoutTypeId();
+
+                        return $pid !== null && (int) $get('expense_type_id') === $pid;
+                    })
+                    ->required(function (Get $get): bool {
+                        $pid = ExpenseType::affiliatePayoutTypeId();
+
+                        return $pid !== null && (int) $get('expense_type_id') === $pid;
+                    })
+                    ->afterStateUpdated(function ($state, Get $get, Set $set): void {
+                        $pid = ExpenseType::affiliatePayoutTypeId();
+                        if (! $state || $pid === null || (int) $get('expense_type_id') !== $pid) {
+                            return;
+                        }
+                        $affiliate = Affiliate::query()->find($state);
+                        if ($affiliate) {
+                            $set('vendor', $affiliate->name);
+                        }
+                    }),
                 TextInput::make('amount')
                     ->required()
                     ->numeric()
@@ -169,6 +199,17 @@ class ExpenseResource extends Resource
 
                                 return EmployeeResource::getUrl('view', ['record' => $record->employee_id]);
                             }),
+                        TextEntry::make('affiliate.name')
+                            ->label('Affiliate')
+                            ->placeholder('—')
+                            ->url(function (TextEntry $component): ?string {
+                                $record = $component->getRecord();
+                                if (! $record instanceof Expense || ! $record->affiliate_id) {
+                                    return null;
+                                }
+
+                                return AffiliateResource::getUrl('view', ['record' => $record->affiliate_id]);
+                            }),
                         TextEntry::make('vendor')
                             ->placeholder('—'),
                         TextEntry::make('description')
@@ -218,6 +259,12 @@ class ExpenseResource extends Resource
                     ->label('Employee')
                     ->placeholder('—')
                     ->sortable(),
+                Tables\Columns\TextColumn::make('affiliate.name')
+                    ->label('Affiliate')
+                    ->searchable()
+                    ->sortable()
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('vendor')
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('description')
@@ -229,6 +276,11 @@ class ExpenseResource extends Resource
                 Tables\Filters\SelectFilter::make('employee_id')
                     ->label('Employee')
                     ->relationship('employee', 'full_name', fn (Builder $query) => $query->orderBy('full_name'))
+                    ->searchable()
+                    ->preload(),
+                Tables\Filters\SelectFilter::make('affiliate_id')
+                    ->label('Affiliate')
+                    ->relationship('affiliate', 'name', fn (Builder $query) => $query->orderBy('name'))
                     ->searchable()
                     ->preload(),
             ])
