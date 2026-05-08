@@ -8,6 +8,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasAvatar;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -69,6 +70,30 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * All branches this user is allowed to work in (many-to-many via branch_user pivot).
+     *
+     * @return BelongsToMany<Branch, $this>
+     */
+    public function branches(): BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class, 'branch_user');
+    }
+
+    /**
+     * IDs of all branches this user is restricted to. Returns an empty array for unrestricted users.
+     *
+     * @return list<int>
+     */
+    public function branchIds(): array
+    {
+        if (! $this->isBranchRestricted()) {
+            return [];
+        }
+
+        return $this->branches()->pluck('branches.id')->map(fn ($id) => (int) $id)->all();
+    }
+
     public function employee(): HasOne
     {
         return $this->hasOne(Employee::class);
@@ -85,7 +110,22 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
 
     public function isBranchRestricted(): bool
     {
-        return ! $this->hasUnrestrictedBranchAccess() && filled($this->branch_id);
+        return ! $this->hasUnrestrictedBranchAccess() && $this->branches()->exists();
+    }
+
+    /**
+     * Primary branch for this user: first assigned branch, or legacy branch_id, or null.
+     * Used as default value in forms.
+     */
+    public function primaryBranchId(): ?int
+    {
+        if ($this->isBranchRestricted()) {
+            $first = $this->branches()->orderBy('branches.id')->value('branches.id');
+
+            return $first ? (int) $first : null;
+        }
+
+        return filled($this->branch_id) ? (int) $this->branch_id : null;
     }
 
     public function getFilamentAvatarUrl(): ?string

@@ -70,7 +70,7 @@ class StockPurchaseResource extends Resource
                             ->label('Branch')
                             ->options(fn () => Branch::query()
                                 ->where('is_active', true)
-                                ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereKey(auth()->user()?->branch_id))
+                                ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereIn('id', auth()->user()->branchIds()))
                                 ->orderByDesc('is_default')
                                 ->orderBy('name')
                                 ->pluck('name', 'id'))
@@ -78,7 +78,7 @@ class StockPurchaseResource extends Resource
                             ->searchable()
                             ->preload()
                             ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                            ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false),
+                            ->disabled(fn () => auth()->user()?->isBranchRestricted() && count(auth()->user()->branchIds()) === 1),
                         TextInput::make('quantity')
                             ->label('Units')
                             ->numeric()
@@ -148,7 +148,7 @@ class StockPurchaseResource extends Resource
                             $q->forBranch($branchIds[0]);
                         }
                         if (auth()->user()?->isBranchRestricted()) {
-                            $q->forBranch((int) auth()->user()->branch_id);
+                            $q->forAnyBranch(auth()->user()->branchIds());
                         }
 
                         return $q->orderByDesc('is_default')
@@ -238,7 +238,7 @@ class StockPurchaseResource extends Resource
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->where('branch_id', $user->branch_id);
+            $query->whereIn('branch_id', $user->branchIds());
         }
 
         return $query;

@@ -43,7 +43,7 @@ class PayrollExpenseGenerator
             ->where('base_salary', '>', 0)
             ->when(
                 $user?->isBranchRestricted(),
-                fn ($q) => $q->where('branch_id', $user->branch_id),
+                fn ($q) => $q->whereIn('branch_id', $user->branchIds()),
             )
             ->orderBy('full_name')
             ->get();

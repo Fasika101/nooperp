@@ -23,6 +23,12 @@ class PaymentObserver
 
     public function deleted(Payment $payment): void
     {
+        BankTransaction::query()
+            ->where('reference_type', Payment::class)
+            ->where('reference_id', $payment->id)
+            ->get()
+            ->each(fn (BankTransaction $t) => $t->delete());
+
         $payment->order?->syncPaymentTotals();
     }
 

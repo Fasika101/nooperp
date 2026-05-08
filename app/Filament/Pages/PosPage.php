@@ -236,9 +236,13 @@ class PosPage extends Page
 
     public function getBranches()
     {
-        if ($this->isBranchLocked()) {
+        $user = Auth::user();
+
+        if ($user?->isBranchRestricted()) {
             return Branch::query()
-                ->whereKey($this->getResolvedBranchId())
+                ->whereIn('id', $user->branchIds())
+                ->orderByDesc('is_default')
+                ->orderBy('name')
                 ->get();
         }
 
@@ -376,6 +380,44 @@ class PosPage extends Page
         }
         $colors = $product->posSelectableColorOptions($this->branchId, $this->variantPickSizeId);
         if (! $colors->pluck('id')->contains((int) $this->variantPickColorId)) {
+            $this->variantPickColorId = null;
+        }
+    }
+
+    public function selectVariantColor(int $id): void
+    {
+        $this->variantPickColorId = $id;
+
+        if (! $this->variantModalProductId || ! $this->branchId || $this->variantPickSizeId === null) {
+            return;
+        }
+
+        $product = Product::query()->find($this->variantModalProductId);
+        if (! $product) {
+            return;
+        }
+
+        $sizes = $product->posSelectableSizeOptions($this->branchId, $this->variantPickColorId);
+        if (! $sizes->pluck('id')->contains($this->variantPickSizeId)) {
+            $this->variantPickSizeId = null;
+        }
+    }
+
+    public function selectVariantSize(int $id): void
+    {
+        $this->variantPickSizeId = $id;
+
+        if (! $this->variantModalProductId || ! $this->branchId || $this->variantPickColorId === null) {
+            return;
+        }
+
+        $product = Product::query()->find($this->variantModalProductId);
+        if (! $product) {
+            return;
+        }
+
+        $colors = $product->posSelectableColorOptions($this->branchId, $this->variantPickSizeId);
+        if (! $colors->pluck('id')->contains($this->variantPickColorId)) {
             $this->variantPickColorId = null;
         }
     }
@@ -1915,7 +1957,15 @@ class PosPage extends Page
 
     public function isBranchLocked(): bool
     {
-        return Auth::user()?->isBranchRestricted() ?? false;
+        $user = Auth::user();
+
+        if (! $user?->isBranchRestricted()) {
+            return false;
+        }
+
+        // Lock the selector only when the user has exactly one assigned branch;
+        // with multiple branches they can still pick which one they're working at.
+        return count($user->branchIds()) === 1;
     }
 
     protected function getResolvedBranchId(): ?int
@@ -1923,7 +1973,10 @@ class PosPage extends Page
         $user = Auth::user();
 
         if ($user?->isBranchRestricted()) {
-            return $user->branch_id;
+            $ids = $user->branchIds();
+
+            // Single-branch: auto-select. Multi-branch: let the POS branch selector decide.
+            return count($ids) === 1 ? $ids[0] : null;
         }
 
         return Branch::getDefaultBranch()?->id;

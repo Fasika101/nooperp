@@ -98,6 +98,36 @@ class BankAccount extends Model
     }
 
     /**
+     * Accounts usable at ANY of the given branches (OR logic — for multi-branch user filtering).
+     *
+     * @param  list<int>  $branchIds
+     */
+    public function scopeForAnyBranch(Builder $query, array $branchIds): Builder
+    {
+        $branchIds = array_values(array_unique(array_filter(array_map('intval', $branchIds))));
+        if (empty($branchIds)) {
+            return $query;
+        }
+
+        return $query->where(function (Builder $outer) use ($branchIds): void {
+            foreach ($branchIds as $bid) {
+                $outer->orWhere(function (Builder $q) use ($bid): void {
+                    $q->where('is_global', true)
+                        ->orWhereHas('branches', fn (Builder $b) => $b->where('branches.id', $bid))
+                        ->orWhere(function (Builder $q2) use ($bid): void {
+                            $q2->where('is_global', false)
+                                ->whereDoesntHave('branches')
+                                ->where(function (Builder $q3) use ($bid): void {
+                                    $q3->whereNull('branch_id')
+                                        ->orWhere('branch_id', $bid);
+                                });
+                        });
+                });
+            }
+        });
+    }
+
+    /**
      * Accounts usable at every branch in the list (e.g. multi-branch restock paid from one account).
      *
      * @param  list<int>  $branchIds

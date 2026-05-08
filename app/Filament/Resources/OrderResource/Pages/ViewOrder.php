@@ -3,11 +3,14 @@
 namespace App\Filament\Resources\OrderResource\Pages;
 
 use App\Filament\Resources\OrderResource;
+use App\Models\Order;
 use App\Models\PaymentType;
 use App\Models\Setting;
 use App\Services\AccountsReceivableService;
 use Filament\Actions\Action;
+use Filament\Actions\DeleteAction;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
@@ -77,6 +80,20 @@ class ViewOrder extends ViewRecord
                 ->icon('heroicon-o-printer')
                 ->url(fn (): string => route('receipt.show', $this->getRecord()))
                 ->openUrlInNewTab(),
+            DeleteAction::make()
+                ->visible(fn (): bool => OrderResource::canDelete($this->getRecord()))
+                ->modalHeading('Delete order')
+                ->modalDescription('This will restore all product stock, reverse any payments, and (if settled) reverse the affiliate commission payout. This cannot be undone.')
+                ->form([
+                    Textarea::make('deletion_notes')
+                        ->label('Reason for deletion')
+                        ->placeholder('e.g. Test order, duplicate, customer cancelled…')
+                        ->rows(3),
+                ])
+                ->before(function (array $data, Order $record): void {
+                    $record->deletion_notes = $data['deletion_notes'] ?? null;
+                })
+                ->successRedirectUrl(OrderResource::getUrl('index')),
         ];
     }
 }

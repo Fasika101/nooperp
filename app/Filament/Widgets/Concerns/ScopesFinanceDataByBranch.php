@@ -9,7 +9,7 @@ trait ScopesFinanceDataByBranch
     protected function scopeExpenses(Builder $query): Builder
     {
         if (auth()->user()?->isBranchRestricted()) {
-            $query->where($query->qualifyColumn('branch_id'), auth()->user()->branch_id);
+            $query->whereIn($query->qualifyColumn('branch_id'), auth()->user()->branchIds());
         }
 
         return $query;
@@ -18,7 +18,7 @@ trait ScopesFinanceDataByBranch
     protected function scopeOrders(Builder $query): Builder
     {
         if (auth()->user()?->isBranchRestricted()) {
-            $query->where($query->qualifyColumn('branch_id'), auth()->user()->branch_id);
+            $query->whereIn($query->qualifyColumn('branch_id'), auth()->user()->branchIds());
         }
 
         return $query;

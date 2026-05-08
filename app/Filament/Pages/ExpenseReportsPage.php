@@ -73,7 +73,7 @@ class ExpenseReportsPage extends Page implements HasTable
             ->query(function (): Builder {
                 $query = Expense::query()->with(['expenseType', 'bankAccount', 'branch']);
                 if (auth()->user()?->isBranchRestricted()) {
-                    $query->where('branch_id', auth()->user()->branch_id);
+                    $query->whereIn('branch_id', auth()->user()->branchIds());
                 }
 
                 return $query;
@@ -342,7 +342,7 @@ class ExpenseReportsPage extends Page implements HasTable
 
         $query = Expense::query()->with(['expenseType', 'bankAccount', 'branch']);
         if (auth()->user()?->isBranchRestricted()) {
-            $query->where('branch_id', auth()->user()->branch_id);
+            $query->whereIn('branch_id', auth()->user()->branchIds());
         }
         $this->applyAllReportFilters($query, $filters);
 

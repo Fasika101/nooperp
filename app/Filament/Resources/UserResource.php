@@ -38,13 +38,13 @@ class UserResource extends Resource
                     ->required()
                     ->maxLength(255)
                     ->unique(ignoreRecord: true),
-                Select::make('branch_id')
-                    ->label('Assigned Branch')
-                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
+                Select::make('branches')
+                    ->label('Assigned Branches')
+                    ->relationship('branches', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
+                    ->multiple()
                     ->searchable()
                     ->preload()
-                    ->helperText('Branch staff will be locked to this branch in POS and branch-owned records.')
-                    ->default(fn () => Branch::getDefaultBranch()?->id),
+                    ->helperText('Staff are restricted to these branches in POS and all branch-scoped records. Leave empty for unrestricted (manager-level) access.'),
                 TextInput::make('password')
                     ->password()
                     ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Hash::make($state) : null)
@@ -67,10 +67,11 @@ class UserResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('email')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('branch.name')
-                    ->label('Branch')
-                    ->placeholder('—')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('branches.name')
+                    ->label('Branches')
+                    ->badge()
+                    ->separator(',')
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('roles.name')
                     ->badge()
                     ->separator(','),

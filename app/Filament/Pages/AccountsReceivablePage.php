@@ -59,7 +59,7 @@ class AccountsReceivablePage extends Page implements HasTable
                     ->orderByDesc('created_at');
 
                 if (auth()->user()?->isBranchRestricted()) {
-                    $query->where('branch_id', auth()->user()->branch_id);
+                    $query->whereIn('branch_id', auth()->user()->branchIds());
                 }
 
                 return $query;

@@ -37,7 +37,7 @@ class PaymentResource extends Resource
                         'order',
                         'id',
                         fn ($query) => $query
-                            ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->where('branch_id', auth()->user()?->branch_id))
+                            ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereIn('branch_id', auth()->user()->branchIds()))
                             ->orderBy('id', 'desc')
                     )
                     ->required()
@@ -52,7 +52,7 @@ class PaymentResource extends Resource
                 Select::make('payment_type_id')
                     ->relationship('paymentType', 'name', fn ($query) => $query
                         ->where('is_active', true)
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forAnyBranch(auth()->user()->branchIds()))
                         ->orderBy('name'))
                     ->required()
                     ->searchable()
@@ -146,7 +146,7 @@ class PaymentResource extends Resource
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->where('branch_id', $user->branch_id);
+            $query->whereIn('branch_id', $user->branchIds());
         }
 
         return $query;

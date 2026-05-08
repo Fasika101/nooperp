@@ -6,6 +6,7 @@ use App\Filament\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\ProductOption;
 use Filament\Actions;
+use Filament\Forms\Components\Textarea;
 use Filament\Resources\Pages\EditRecord;
 
 class EditProduct extends EditRecord
@@ -16,7 +17,16 @@ class EditProduct extends EditRecord
     {
         return [
             Actions\ViewAction::make(),
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->form([
+                    Textarea::make('deletion_notes')
+                        ->label('Reason for deletion')
+                        ->placeholder('e.g. Discontinued, damaged stock, supplier issue…')
+                        ->rows(3),
+                ])
+                ->before(function (array $data, Product $record): void {
+                    $record->deletion_notes = $data['deletion_notes'] ?? null;
+                }),
         ];
     }
 

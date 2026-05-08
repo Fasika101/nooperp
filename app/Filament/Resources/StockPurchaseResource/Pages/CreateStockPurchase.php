@@ -71,11 +71,11 @@ class CreateStockPurchase extends CreateRecord
         }
 
         if (auth()->user()?->isBranchRestricted()) {
-            $allowedBranchId = (int) auth()->user()->branch_id;
+            $allowedBranchIds = auth()->user()->branchIds();
             foreach ($lines as $line) {
-                if ((int) $line['branch_id'] !== $allowedBranchId) {
+                if (! in_array((int) $line['branch_id'], $allowedBranchIds, true)) {
                     throw ValidationException::withMessages([
-                        'restock_allocations' => ['You can only restock to your assigned branch.'],
+                        'restock_allocations' => ['You can only restock to your assigned branches.'],
                     ]);
                 }
             }

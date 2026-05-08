@@ -316,7 +316,7 @@ class ExpenseResource extends Resource
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->where('branch_id', $user->branch_id);
+            $query->whereIn('branch_id', $user->branchIds());
         }
 
         return $query;

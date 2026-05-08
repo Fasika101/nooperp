@@ -70,7 +70,7 @@ class BranchStockTransferResource extends Resource
                     ->label('From branch')
                     ->options(fn () => Branch::query()
                         ->where('is_active', true)
-                        ->when(auth()->user()?->isBranchRestricted(), fn (Builder $q) => $q->whereKey(auth()->user()?->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn (Builder $q) => $q->whereIn('id', auth()->user()->branchIds()))
                         ->orderByDesc('is_default')
                         ->orderBy('name')
                         ->pluck('name', 'id'))
@@ -79,7 +79,7 @@ class BranchStockTransferResource extends Resource
                     ->preload()
                     ->live()
                     ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false)
+                    ->disabled(fn () => auth()->user()?->isBranchRestricted() && count(auth()->user()->branchIds()) === 1)
                     ->helperText(fn (Get $get): ?string => self::branchAvailabilityLine(
                         (int) ($get('product_id') ?? 0),
                         (int) ($get('from_branch_id') ?? 0),
@@ -175,9 +175,9 @@ class BranchStockTransferResource extends Resource
 
         $user = auth()->user();
         if ($user?->isBranchRestricted()) {
-            $bid = (int) $user->branch_id;
-            $query->where(function (Builder $q) use ($bid): void {
-                $q->where('from_branch_id', $bid)->orWhere('to_branch_id', $bid);
+            $bids = $user->branchIds();
+            $query->where(function (Builder $q) use ($bids): void {
+                $q->whereIn('from_branch_id', $bids)->orWhereIn('to_branch_id', $bids);
             });
         }
 

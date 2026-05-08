@@ -226,7 +226,7 @@ class OrderResource extends Resource
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->where('branch_id', $user->branch_id);
+            $query->whereIn('branch_id', $user->branchIds());
         }
 
         return $query;
@@ -244,7 +244,11 @@ class OrderResource extends Resource
 
     public static function canDelete(Model $record): bool
     {
-        return false;
+        /** @var \App\Models\User|null $user */
+        $user = auth()->user();
+
+        return $user?->hasRole(\App\Models\User::ROLE_SUPER_ADMIN)
+            || $user?->hasRole(\App\Models\User::ROLE_MANAGER);
     }
 
     public static function canDeleteAny(): bool

@@ -64,7 +64,7 @@ class BankAccountResource extends Resource
                     ->searchable()
                     ->preload()
                     ->default(fn () => auth()->user()?->branch_id
-                        ? [auth()->user()->branch_id]
+                        ? [auth()->user()->primaryBranchId() ?? auth()->user()->branch_id]
                         : (Branch::getDefaultBranch()?->id ? [Branch::getDefaultBranch()->id] : []))
                     ->disabled(fn (): bool => auth()->user()?->isBranchRestricted() ?? false)
                     ->dehydrated(),
@@ -170,7 +170,7 @@ class BankAccountResource extends Resource
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->forBranch($user->branch_id);
+            $query->forAnyBranch($user->branchIds());
         }
 
         return $query;

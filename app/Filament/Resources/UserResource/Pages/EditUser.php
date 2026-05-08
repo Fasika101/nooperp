@@ -23,6 +23,7 @@ class EditUser extends EditRecord
     {
         $this->rolesToSync = $data['roles'] ?? [];
         unset($data['roles']);
+        unset($data['branches']);
 
         return $data;
     }
@@ -32,5 +33,14 @@ class EditUser extends EditRecord
         if (! empty($this->rolesToSync)) {
             $this->record->syncRoles($this->rolesToSync);
         }
+
+        $this->syncPrimaryBranch();
+    }
+
+    private function syncPrimaryBranch(): void
+    {
+        $this->record->refresh();
+        $first = $this->record->branches()->orderBy('branches.id')->value('branches.id');
+        $this->record->updateQuietly(['branch_id' => $first ?? null]);
     }
 }

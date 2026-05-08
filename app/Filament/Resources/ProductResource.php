@@ -10,14 +10,15 @@ use App\Models\Product;
 use App\Models\ProductOption;
 use App\Models\Setting;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\ImageEntry;
@@ -450,7 +451,7 @@ class ProductResource extends Resource
                             ->label('Branch')
                             ->options(fn () => Branch::query()
                                 ->where('is_active', true)
-                                ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereKey(auth()->user()?->branch_id))
+                                ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereIn('id', auth()->user()->branchIds()))
                                 ->orderByDesc('is_default')
                                 ->orderBy('name')
                                 ->pluck('name', 'id'))
@@ -458,7 +459,7 @@ class ProductResource extends Resource
                             ->searchable()
                             ->preload()
                             ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                            ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false),
+                            ->disabled(fn () => auth()->user()?->isBranchRestricted() && count(auth()->user()->branchIds()) === 1),
                         Select::make('color_option_id')
                             ->label('Color')
                             ->options(function (Get $get) {
@@ -500,7 +501,7 @@ class ProductResource extends Resource
                 Select::make('initial_stock_bank_account_id')
                     ->label('Pay Initial Stock From')
                     ->options(fn () => BankAccount::query()
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forAnyBranch(auth()->user()->branchIds()))
                         ->orderByDesc('is_default')
                         ->orderBy('name')
                         ->pluck('name', 'id'))
@@ -614,9 +615,9 @@ class ProductResource extends Resource
                 Tables\Filters\SelectFilter::make('branch')
                     ->label('Branch')
                     ->options(fn () => Branch::query()
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereKey(auth()->user()?->branch_id))
-                        ->orderBy('name')
-                        ->pluck('name', 'id'))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereIn('id', auth()->user()->branchIds()))
+                                ->orderBy('name')
+                                ->pluck('name', 'id'))
                     ->query(function ($query, array $data) {
                         $branchId = $data['value'] ?? null;
 
@@ -658,7 +659,26 @@ class ProductResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    BulkAction::make('delete')
+                        ->label('Delete selected')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected products')
+                        ->modalDescription('This will refund the remaining inventory value (stock × cost price) back to the bank account and cannot be undone.')
+                        ->form([
+                            Textarea::make('deletion_notes')
+                                ->label('Reason for deletion')
+                                ->placeholder('e.g. Discontinued, damaged stock, supplier issue…')
+                                ->rows(3),
+                        ])
+                        ->action(function ($records, array $data): void {
+                            foreach ($records as $record) {
+                                $record->deletion_notes = $data['deletion_notes'] ?? null;
+                                $record->delete();
+                            }
+                        })
+                        ->deselectRecordsAfterCompletion(),
                 ]),
             ]);
     }

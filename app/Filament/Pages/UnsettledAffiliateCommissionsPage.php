@@ -72,7 +72,7 @@ class UnsettledAffiliateCommissionsPage extends Page implements HasTable
                     ->withSum('affiliateCommissionSettlements as commission_settled_sum', 'amount');
 
                 if (auth()->user()?->isBranchRestricted()) {
-                    $query->where('branch_id', auth()->user()->branch_id);
+                    $query->whereIn('branch_id', auth()->user()->branchIds());
                 }
 
                 return $query->orderByDesc('created_at');

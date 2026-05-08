@@ -19,7 +19,7 @@ class BankAccountBalancesWidget extends BaseWidget
     {
         $query = BankAccount::query();
         if (auth()->user()?->isBranchRestricted()) {
-            $query->forBranch((int) auth()->user()->branch_id);
+            $query->forAnyBranch(auth()->user()->branchIds());
         }
 
         return max(1, min($query->count(), 4));
@@ -31,7 +31,7 @@ class BankAccountBalancesWidget extends BaseWidget
 
         $query = BankAccount::query();
         if (auth()->user()?->isBranchRestricted()) {
-            $query->forBranch((int) auth()->user()->branch_id);
+            $query->forAnyBranch(auth()->user()->branchIds());
         }
 
         return $query

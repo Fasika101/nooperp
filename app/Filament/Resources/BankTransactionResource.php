@@ -51,7 +51,7 @@ class BankTransactionResource extends Resource
                     ->dehydrated(),
                 Select::make('bank_account_id')
                     ->relationship('bankAccount', 'name', fn ($query) => $query
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forAnyBranch(auth()->user()->branchIds()))
                         ->orderBy('name'))
                     ->required()
                     ->searchable()
@@ -70,7 +70,7 @@ class BankTransactionResource extends Resource
                 Select::make('destination_bank_account_id')
                     ->label('Destination Account')
                     ->options(fn () => BankAccount::query()
-                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forBranch((int) auth()->user()->branch_id))
+                        ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->forAnyBranch(auth()->user()->branchIds()))
                         ->orderBy('name')
                         ->pluck('name', 'id'))
                     ->searchable()
@@ -169,7 +169,7 @@ class BankTransactionResource extends Resource
         $user = auth()->user();
 
         if ($user?->isBranchRestricted()) {
-            $query->where('branch_id', $user->branch_id);
+            $query->whereIn('branch_id', $user->branchIds());
         }
 
         return $query;

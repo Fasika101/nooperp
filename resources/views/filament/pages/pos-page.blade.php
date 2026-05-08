@@ -259,6 +259,32 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 .dark .pos-modal-actions button { background: rgb(55 65 81); border-color: rgb(75 85 99); color: rgb(229 231 235); }
 .pos-modal-actions button.primary { background: var(--primary-600); border-color: var(--primary-600); color: white; }
 .pos-modal-actions button.primary:hover { background: var(--primary-500); }
+
+/* Variant chip picker */
+.pos-variant-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.375rem; }
+.pos-variant-chip {
+    padding: 0.375rem 0.875rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border: 1.5px solid rgb(209 213 219);
+    background: white;
+    color: rgb(55 65 81);
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1.4;
+}
+.dark .pos-variant-chip { background: rgb(55 65 81); border-color: rgb(75 85 99); color: rgb(229 231 235); }
+.pos-variant-chip:not(.out-of-stock):hover { border-color: var(--primary-500); color: var(--primary-600); background: rgba(var(--primary-500-rgb, 99 102 241), 0.06); }
+.pos-variant-chip.selected { background: var(--primary-600); border-color: var(--primary-600); color: white; }
+.pos-variant-chip.selected:hover { background: var(--primary-500); border-color: var(--primary-500); }
+.pos-variant-chip.out-of-stock {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
+    text-decoration: line-through;
+    border-style: dashed;
+}
 </style>
 @endpush
 
@@ -815,40 +841,66 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                     <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Choose size and/or color, then add to cart.</p>
                     @php
                         $colorsAllModal = $vp->configuredColorOptions();
-                        $sizesAllModal = $vp->configuredSizeOptions();
-                        $vSizes = $vp->posSelectableSizeOptions($this->branchId, $this->variantPickColorId);
-                        $vColors = $vp->posSelectableColorOptions($this->branchId, $this->variantPickSizeId);
+                        $sizesAllModal  = $vp->configuredSizeOptions();
+                        // In-stock IDs for each axis, filtered by the current partial selection.
+                        // availableColor/SizeOptions only returns rows with qty >= 1 for the branch.
+                        $availColorIds = $vp->availableColorOptions($this->branchId, $this->variantPickSizeId)->pluck('id')->flip();
+                        $availSizeIds  = $vp->availableSizeOptions($this->branchId, $this->variantPickColorId)->pluck('id')->flip();
+                        // If no in-stock IDs exist at all (branch stock data missing), fall back to
+                        // treating everything as available so the select is not fully locked out.
+                        $colorStockKnown = $colorsAllModal->isNotEmpty() && $vp->availableColorOptions($this->branchId)->isNotEmpty();
+                        $sizeStockKnown  = $sizesAllModal->isNotEmpty() && $vp->availableSizeOptions($this->branchId)->isNotEmpty();
                     @endphp
                     @if($colorsAllModal->isNotEmpty())
                         <div class="pos-cart-field">
-                            <label>Color @if($colorsAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif</label>
-                            @if($vColors->isEmpty())
-                                <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 0.5rem;">Choose a size first (if applicable), or no color matches current selection for this branch.</p>
-                            @endif
-                            <select wire:model.live="variantPickColorId" @if($vColors->isEmpty()) disabled @endif>
-                                @if($colorsAllModal->count() > 1)
-                                    <option value="">— Select —</option>
+                            <label>
+                                Color
+                                @if($colorsAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif
+                                @if(! $variantPickColorId && $colorsAllModal->count() > 1)
+                                    <span style="font-weight: 400; color: rgb(107 114 128); font-size: 0.75rem;"> — pick one</span>
                                 @endif
-                                @foreach($vColors as $opt)
-                                    <option value="{{ $opt->id }}">{{ $opt->name }}</option>
+                            </label>
+                            <div class="pos-variant-chips">
+                                @foreach($colorsAllModal as $opt)
+                                    @php
+                                        $inStock = ! $colorStockKnown || isset($availColorIds[$opt->id]);
+                                        $isSelected = (int) $variantPickColorId === (int) $opt->id;
+                                    @endphp
+                                    <button
+                                        type="button"
+                                        wire:key="color-chip-{{ $variantModalProductId }}-{{ $opt->id }}"
+                                        wire:click="selectVariantColor({{ $opt->id }})"
+                                        class="pos-variant-chip {{ $isSelected ? 'selected' : '' }} {{ ! $inStock ? 'out-of-stock' : '' }}"
+                                        title="{{ ! $inStock ? 'Out of stock' : $opt->name }}"
+                                    >{{ $opt->name }}</button>
                                 @endforeach
-                            </select>
+                            </div>
                         </div>
                     @endif
                     @if($sizesAllModal->isNotEmpty())
                         <div class="pos-cart-field">
-                            <label>Size @if($sizesAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif</label>
-                            @if($vSizes->isEmpty())
-                                <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 0.5rem;">Choose a color first (if applicable), or no size matches current selection for this branch.</p>
-                            @endif
-                            <select wire:model.live="variantPickSizeId" @if($vSizes->isEmpty()) disabled @endif>
-                                @if($sizesAllModal->count() > 1)
-                                    <option value="">— Select —</option>
+                            <label>
+                                Size
+                                @if($sizesAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif
+                                @if(! $variantPickSizeId && $sizesAllModal->count() > 1)
+                                    <span style="font-weight: 400; color: rgb(107 114 128); font-size: 0.75rem;"> — pick one</span>
                                 @endif
-                                @foreach($vSizes as $opt)
-                                    <option value="{{ $opt->id }}">{{ $opt->name }}</option>
+                            </label>
+                            <div class="pos-variant-chips">
+                                @foreach($sizesAllModal as $opt)
+                                    @php
+                                        $inStock = ! $sizeStockKnown || isset($availSizeIds[$opt->id]);
+                                        $isSelected = (int) $variantPickSizeId === (int) $opt->id;
+                                    @endphp
+                                    <button
+                                        type="button"
+                                        wire:key="size-chip-{{ $variantModalProductId }}-{{ $opt->id }}"
+                                        wire:click="selectVariantSize({{ $opt->id }})"
+                                        class="pos-variant-chip {{ $isSelected ? 'selected' : '' }} {{ ! $inStock ? 'out-of-stock' : '' }}"
+                                        title="{{ ! $inStock ? 'Out of stock' : $opt->name }}"
+                                    >{{ $opt->name }}</button>
                                 @endforeach
-                            </select>
+                            </div>
                         </div>
                     @endif
                     <div class="pos-modal-actions">
