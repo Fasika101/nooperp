@@ -62,6 +62,15 @@
                 <tr>
                     <td>
                         {{ $item->display_name }}
+                        @php
+                            $sizeName = $item->frameSize?->name;
+                            $colorName = $item->frameColor?->name;
+                            $variantParts = array_filter([$sizeName, $colorName]);
+                            $variantText = $variantParts !== [] ? implode(', ', $variantParts) : null;
+                        @endphp
+                        @if($variantText && ! str_contains($item->display_name, $variantText))
+                            <div style="font-size: 11px; color: #666; margin-top: 2px;">{{ $variantText }}</div>
+                        @endif
                         @if($item->hasOpticalDetails())
                             @php $m = $item->optical_meta; @endphp
                             <div style="font-size: 10px; color: #666; margin-top: 4px; line-height: 1.35;">

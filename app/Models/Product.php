@@ -228,6 +228,92 @@ class Product extends Model
     }
 
     /**
+     * Colors that actually have in-stock variants in a branch, queried directly from
+     * product_variants — bypasses pivot sync issues that can cause availableColorOptions()
+     * to return empty even when coloured stock exists.
+     *
+     * @return Collection<int, ProductOption>
+     */
+    public function posColorOptionsInStock(int $branchId): Collection
+    {
+        $colorIds = $this->variants()
+            ->whereNotNull('color_option_id')
+            ->whereHas('branchStocks', fn ($q) => $q->where('branch_id', $branchId)->where('quantity', '>=', 1))
+            ->pluck('color_option_id')
+            ->unique();
+
+        if ($colorIds->isEmpty()) {
+            return new Collection;
+        }
+
+        return ProductOption::query()
+            ->whereIn('id', $colorIds)
+            ->where('type', ProductOption::TYPE_COLOR)
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * Size options for a given color at POS, queried directly from product_variants.
+     *
+     * Resolution order:
+     *   1. Sizes from (color, size) variants that have in-branch stock — queried direct
+     *      from product_variants, no pivot dependency.
+     *   2. Sizes from any (color, size) variant for this product (even 0 stock) — same
+     *      direct query so pivot sync gaps don't hide valid combinations.
+     *   3. If only (color, null) variants exist — size is not tracked per variant; return
+     *      all configured sizes so staff can still record which size they are selling.
+     *
+     * @return Collection<int, ProductOption>
+     */
+    public function posStrictSizeOptionsForColor(int $branchId, int $colorOptionId): Collection
+    {
+        // 1. In-stock (color, size) variants — direct variant query.
+        $inStockSizeIds = $this->variants()
+            ->where('color_option_id', $colorOptionId)
+            ->whereNotNull('size_option_id')
+            ->whereHas('branchStocks', fn ($q) => $q->where('branch_id', $branchId)->where('quantity', '>=', 1))
+            ->pluck('size_option_id')
+            ->unique();
+
+        if ($inStockSizeIds->isNotEmpty()) {
+            return ProductOption::query()
+                ->whereIn('id', $inStockSizeIds)
+                ->where('type', ProductOption::TYPE_SIZE)
+                ->orderBy('name')
+                ->get();
+        }
+
+        // 2. Any (color, size) variant regardless of stock — direct query.
+        $anySizeIds = $this->variants()
+            ->where('color_option_id', $colorOptionId)
+            ->whereNotNull('size_option_id')
+            ->pluck('size_option_id')
+            ->unique();
+
+        if ($anySizeIds->isNotEmpty()) {
+            return ProductOption::query()
+                ->whereIn('id', $anySizeIds)
+                ->where('type', ProductOption::TYPE_SIZE)
+                ->orderBy('name')
+                ->get();
+        }
+
+        // 3. (color, null) variant exists → size is not tracked per variant; fall back to
+        //    all configured sizes so staff can still identify the size being sold.
+        $colorNullVariantExists = $this->variants()
+            ->where('color_option_id', $colorOptionId)
+            ->whereNull('size_option_id')
+            ->exists();
+
+        if ($colorNullVariantExists) {
+            return $this->configuredSizeOptions();
+        }
+
+        return new Collection;
+    }
+
+    /**
      * Whether this (color, size) pair exists on a {@see ProductVariant} row when the product has variants.
      */
     public function posVariantPairIsAllowed(?int $colorOptionId, ?int $sizeOptionId): bool
@@ -248,7 +334,19 @@ class Product extends Model
             $q->whereNull('size_option_id');
         }
 
-        return $q->exists();
+        if ($q->exists()) {
+            return true;
+        }
+
+        // If the product's ONLY variant is the (null/null) default, stock is not tracked
+        // per color/size. Allow any configured selection — the cart will deduct from the
+        // default variant pool. This avoids "invalid combination" when the product catalog
+        // has colors/sizes but stock was purchased without specifying them.
+        return $this->variants()
+            ->where(function ($vq): void {
+                $vq->whereNotNull('color_option_id')->orWhereNotNull('size_option_id');
+            })
+            ->doesntExist();
     }
 
     /**
@@ -375,6 +473,9 @@ class Product extends Model
      */
     public function posNeedsVariantModal(?int $branchId = null): bool
     {
+        // Use configured (pivot/legacy) options, not in-stock only, so that every product
+        // set up with colors/sizes always prompts the staff to confirm the variant — even
+        // when current stock is all under the default (null/null) variant.
         $colors = $this->configuredColorOptions();
         $sizes = $this->configuredSizeOptions();
 

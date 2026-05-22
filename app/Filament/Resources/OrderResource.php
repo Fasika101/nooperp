@@ -198,7 +198,7 @@ class OrderResource extends Resource
                 Action::make('printReceipt')
                     ->label('Print receipt')
                     ->icon('heroicon-o-printer')
-                    ->url(fn (Order $record): string => route('receipt.show', $record))
+                    ->url(fn (Order $record): string => $record->exists ? route('receipt.show', $record) : '#')
                     ->openUrlInNewTab(),
             ])
             ->bulkActions([]);

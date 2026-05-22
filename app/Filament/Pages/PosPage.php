@@ -265,14 +265,23 @@ class PosPage extends Page
 
         if ($product->posNeedsVariantModal($this->branchId)) {
             $this->variantModalProductId = $product->id;
+            // Prefer in-stock options for auto-select; fall back to configured if none in stock.
             $colors = $product->posSelectableColorOptions($this->branchId);
-            $sizes = $product->posSelectableSizeOptions($this->branchId);
             $this->variantPickColorId = $colors->count() === 1 ? (int) $colors->first()->id : null;
-            $this->variantPickSizeId = $sizes->count() === 1 ? (int) $sizes->first()->id : null;
+
+            if ($this->variantPickColorId !== null) {
+                // Color was auto-selected; derive sizes strictly for that color.
+                $sizesForColor = $product->posStrictSizeOptionsForColor($this->branchId, $this->variantPickColorId);
+                $this->variantPickSizeId = $sizesForColor->count() === 1 ? (int) $sizesForColor->first()->id : null;
+            } else {
+                $sizes = $product->posSelectableSizeOptions($this->branchId);
+                $this->variantPickSizeId = $sizes->count() === 1 ? (int) $sizes->first()->id : null;
+            }
 
             return;
         }
 
+        // No variant modal needed — single or no color/size configured.
         $colorId = null;
         $sizeId = null;
         $colors = $product->configuredColorOptions();
@@ -305,8 +314,6 @@ class PosPage extends Page
         }
 
         $colorsAll = $product->configuredColorOptions();
-        $sizesAll = $product->configuredSizeOptions();
-
         $colorId = $this->variantPickColorId ? (int) $this->variantPickColorId : null;
         $sizeId = $this->variantPickSizeId ? (int) $this->variantPickSizeId : null;
 
@@ -315,13 +322,20 @@ class PosPage extends Page
 
             return;
         }
+        if ($colorsAll->count() === 1) {
+            $colorId = (int) $colorsAll->first()->id;
+        }
+
+        // Use strict sizes for the resolved color — only sizes that actually have a variant
+        // pairing with that color (prevents prompting for sizes that can't be selected).
+        $sizesAll = $colorId !== null
+            ? $product->posStrictSizeOptionsForColor($this->branchId, $colorId)
+            : $product->configuredSizeOptions();
+
         if ($sizesAll->count() > 1 && ! $sizeId) {
             Notification::make()->warning()->title('Select a size')->send();
 
             return;
-        }
-        if ($colorsAll->count() === 1) {
-            $colorId = (int) $colorsAll->first()->id;
         }
         if ($sizesAll->count() === 1) {
             $sizeId = (int) $sizesAll->first()->id;
@@ -355,16 +369,21 @@ class PosPage extends Page
     public function updatedVariantPickColorId(mixed $value): void
     {
         $this->variantPickColorId = ($value === '' || $value === null) ? null : (int) $value;
-        if (! $this->variantModalProductId || ! $this->branchId || $this->variantPickSizeId === null) {
+        $this->variantPickSizeId = null; // always clear size when color changes
+
+        if (! $this->variantModalProductId || ! $this->branchId || ! $this->variantPickColorId) {
             return;
         }
+
         $product = Product::query()->find($this->variantModalProductId);
         if (! $product) {
             return;
         }
-        $sizes = $product->posSelectableSizeOptions($this->branchId, $this->variantPickColorId);
-        if (! $sizes->pluck('id')->contains((int) $this->variantPickSizeId)) {
-            $this->variantPickSizeId = null;
+
+        // Auto-select size when only one valid option exists for this color.
+        $sizes = $product->posStrictSizeOptionsForColor($this->branchId, (int) $this->variantPickColorId);
+        if ($sizes->count() === 1) {
+            $this->variantPickSizeId = (int) $sizes->first()->id;
         }
     }
 
@@ -387,8 +406,9 @@ class PosPage extends Page
     public function selectVariantColor(int $id): void
     {
         $this->variantPickColorId = $id;
+        $this->variantPickSizeId = null; // always clear size when color changes
 
-        if (! $this->variantModalProductId || ! $this->branchId || $this->variantPickSizeId === null) {
+        if (! $this->variantModalProductId || ! $this->branchId) {
             return;
         }
 
@@ -397,9 +417,10 @@ class PosPage extends Page
             return;
         }
 
-        $sizes = $product->posSelectableSizeOptions($this->branchId, $this->variantPickColorId);
-        if (! $sizes->pluck('id')->contains($this->variantPickSizeId)) {
-            $this->variantPickSizeId = null;
+        // Auto-select size when only one valid option exists for this color.
+        $sizes = $product->posStrictSizeOptionsForColor($this->branchId, $id);
+        if ($sizes->count() === 1) {
+            $this->variantPickSizeId = (int) $sizes->first()->id;
         }
     }
 
@@ -537,10 +558,11 @@ class PosPage extends Page
             }
             $this->cart[$idx]['quantity']++;
         } else {
+            $lineLabel = $product->formatNameWithVariant($sizeOptionId, $colorOptionId);
             $this->cart[] = [
                 'product_id' => $product->id,
-                'name' => $product->formatNameWithVariant($sizeOptionId, $colorOptionId),
-                'line_label' => null,
+                'name' => $lineLabel,
+                'line_label' => $lineLabel,
                 'color_option_id' => $colorOptionId,
                 'size_option_id' => $sizeOptionId,
                 'color_name' => $colorOptionId ? (string) ProductOption::query()->whereKey($colorOptionId)->value('name') : null,
@@ -1422,7 +1444,7 @@ class PosPage extends Page
                         'product_id' => $item['product_id'],
                         'size_option_id' => $item['size_option_id'] ?? null,
                         'color_option_id' => $item['color_option_id'] ?? null,
-                        'line_label' => $item['line_label'] ?? null,
+                        'line_label' => $item['line_label'] ?? $item['name'] ?? null,
                         'quantity' => $item['quantity'],
                         'price' => $item['price'],
                         'unit_cost' => $item['unit_cost'] ?? null,
@@ -1479,10 +1501,10 @@ class PosPage extends Page
                 ->actions([
                     Action::make('viewReceipt')
                         ->label('Print Receipt')
-                        ->url(route('receipt.show', $lastOrderId), shouldOpenInNewTab: true),
+                        ->url($lastOrderId ? route('receipt.show', $lastOrderId) : '#', shouldOpenInNewTab: true),
                     Action::make('downloadPdf')
                         ->label('Download PDF')
-                        ->url(route('receipt.pdf', $lastOrderId), shouldOpenInNewTab: true),
+                        ->url($lastOrderId ? route('receipt.pdf', $lastOrderId) : '#', shouldOpenInNewTab: true),
                 ])
                 ->send();
         } catch (\Exception $e) {

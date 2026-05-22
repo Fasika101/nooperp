@@ -108,7 +108,9 @@ class OrderItemResource extends Resource
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('revenue')
                     ->label('Revenue')
-                    ->getStateUsing(fn (OrderItem $record): float => (float) $record->order->total_amount - (float) $record->order->shipping_amount)
+                    ->getStateUsing(fn (OrderItem $record): float => $record->order
+                        ? (float) $record->order->total_amount - (float) $record->order->shipping_amount
+                        : 0.0)
                     ->money($currency),
                 Tables\Columns\TextColumn::make('order.shipping_amount')
                     ->label('Shipping')
@@ -123,7 +125,7 @@ class OrderItemResource extends Resource
                 Action::make('viewReceipt')
                     ->label('View Receipt')
                     ->icon('heroicon-o-document-text')
-                    ->url(fn (OrderItem $record): string => route('receipt.show', $record->order))
+                    ->url(fn (OrderItem $record): string => $record->order ? route('receipt.show', $record->order) : '#')
                     ->openUrlInNewTab(),
             ])
             ->bulkActions([

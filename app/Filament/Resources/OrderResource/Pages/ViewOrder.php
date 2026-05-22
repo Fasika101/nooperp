@@ -3,9 +3,11 @@
 namespace App\Filament\Resources\OrderResource\Pages;
 
 use App\Filament\Resources\OrderResource;
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\PaymentType;
 use App\Models\Setting;
+use App\Models\User;
 use App\Services\AccountsReceivableService;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -25,6 +27,34 @@ class ViewOrder extends ViewRecord
         $currency = Setting::getDefaultCurrency();
 
         return [
+            Action::make('changeCustomer')
+                ->label('Change customer')
+                ->icon('heroicon-o-user')
+                ->visible(function (): bool {
+                    /** @var User|null $user */
+                    $user = auth()->user();
+
+                    return $user?->hasRole(User::ROLE_SUPER_ADMIN) || $user?->hasRole(User::ROLE_MANAGER);
+                })
+                ->modalHeading('Change customer')
+                ->modalDescription('Only the customer on this order will be updated. Payments, stock, and financials are not affected.')
+                ->form([
+                    Select::make('customer_id')
+                        ->label('Customer')
+                        ->options(fn () => Customer::query()->orderBy('name')->pluck('name', 'id')->all())
+                        ->default(fn (): ?int => $this->getRecord()->customer_id)
+                        ->searchable()
+                        ->preload()
+                        ->required(),
+                ])
+                ->action(function (array $data): void {
+                    $this->getRecord()->updateQuietly(['customer_id' => (int) $data['customer_id']]);
+                    $this->record->refresh();
+                    Notification::make()
+                        ->success()
+                        ->title('Customer updated')
+                        ->send();
+                }),
             Action::make('recordPayment')
                 ->label('Record payment')
                 ->icon('heroicon-o-banknotes')
@@ -78,7 +108,7 @@ class ViewOrder extends ViewRecord
             Action::make('printReceipt')
                 ->label('Print receipt')
                 ->icon('heroicon-o-printer')
-                ->url(fn (): string => route('receipt.show', $this->getRecord()))
+                ->url(fn (): string => $this->getRecord() ? route('receipt.show', $this->getRecord()) : '#')
                 ->openUrlInNewTab(),
             DeleteAction::make()
                 ->visible(fn (): bool => OrderResource::canDelete($this->getRecord()))

@@ -22,7 +22,7 @@ class OrderItemsRelationManager extends RelationManager
 
         return $table
             ->recordTitleAttribute('id')
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['product.size', 'product.color', 'rxExtraCustomizations']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['product.size', 'product.color', 'frameSize', 'frameColor', 'rxExtraCustomizations']))
             ->columns([
                 Tables\Columns\TextColumn::make('id')
                     ->label('#')

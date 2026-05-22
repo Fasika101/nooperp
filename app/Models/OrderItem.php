@@ -39,19 +39,67 @@ class OrderItem extends Model
 
     public function getDisplayNameAttribute(): string
     {
-        if ($this->line_label) {
-            return $this->line_label;
+        return $this->buildDisplayLabel();
+    }
+
+    /**
+     * Human-readable sold-item label. Prefer persisted line_label so receipts/history
+     * stay accurate even if the product catalog row is later deleted.
+     */
+    public function buildDisplayLabel(): string
+    {
+        if (filled($this->line_label)) {
+            return (string) $this->line_label;
         }
 
-        $product = $this->product;
-        if (! $product) {
-            return 'Item';
+        $product = $this->relationLoaded('product') ? $this->product : $this->product()->first();
+        if ($product) {
+            return $product->formatNameWithVariant(
+                $this->size_option_id ? (int) $this->size_option_id : null,
+                $this->color_option_id ? (int) $this->color_option_id : null,
+            );
         }
 
-        return $product->formatNameWithVariant(
-            $this->size_option_id ? (int) $this->size_option_id : null,
-            $this->color_option_id ? (int) $this->color_option_id : null,
-        );
+        if ($this->hasOpticalDetails()) {
+            $meta = $this->optical_meta ?? [];
+            $route = $meta['route'] ?? '';
+            $lensName = trim((string) ($meta['lens_name'] ?? ''));
+
+            if ($route === 'prescription') {
+                $label = $lensName !== '' ? "Lens (Rx): {$lensName}" : 'Lens (Rx)';
+            } elseif ($route === 'no_prescription') {
+                $label = $lensName !== '' ? "Lens (no prescription): {$lensName}" : 'Lens (no prescription)';
+            } else {
+                $label = $lensName !== '' ? $lensName : 'Lens item';
+            }
+
+            $frame = $meta['frame'] ?? null;
+            if (is_array($frame)) {
+                $frameParts = array_filter([
+                    $frame['size_name'] ?? null,
+                    $frame['color_name'] ?? null,
+                ]);
+                if ($frameParts !== []) {
+                    $label .= ' — '.implode(', ', $frameParts);
+                }
+            }
+
+            return $label;
+        }
+
+        $sizeName = $this->relationLoaded('frameSize')
+            ? $this->frameSize?->name
+            : ($this->size_option_id ? ProductOption::query()->whereKey($this->size_option_id)->value('name') : null);
+        $colorName = $this->relationLoaded('frameColor')
+            ? $this->frameColor?->name
+            : ($this->color_option_id ? ProductOption::query()->whereKey($this->color_option_id)->value('name') : null);
+        $variantParts = array_filter([$sizeName, $colorName]);
+
+        if ($variantParts !== []) {
+            return 'Sold item — '.implode(', ', $variantParts);
+        }
+
+        return 'Sold item';
     }
 
     public function frameSize(): BelongsTo

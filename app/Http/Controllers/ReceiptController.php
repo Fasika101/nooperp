@@ -10,7 +10,7 @@ class ReceiptController extends Controller
 {
     public function show(Order $order)
     {
-        $order->load(['orderItems.product', 'orderItems.rxExtraCustomizations', 'customer', 'taxType']);
+        $order->load(['orderItems.product', 'orderItems.frameSize', 'orderItems.frameColor', 'orderItems.rxExtraCustomizations', 'customer', 'taxType']);
         $currency = Setting::getDefaultCurrency();
 
         return view('receipt', compact('order', 'currency'));
@@ -18,7 +18,7 @@ class ReceiptController extends Controller
 
     public function pdf(Order $order)
     {
-        $order->load(['orderItems.product', 'orderItems.rxExtraCustomizations', 'customer', 'taxType']);
+        $order->load(['orderItems.product', 'orderItems.frameSize', 'orderItems.frameColor', 'orderItems.rxExtraCustomizations', 'customer', 'taxType']);
         $currency = Setting::getDefaultCurrency();
         $forPdf = true;
         $pdf = Pdf::loadView('receipt', compact('order', 'currency', 'forPdf'));

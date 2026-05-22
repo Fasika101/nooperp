@@ -54,5 +54,17 @@ class ProductObserver
             'deleted_by_user_id' => auth()->id(),
             'notes' => $product->deletion_notes ?? null,
         ]);
+
+        // Preserve sold-item labels before the product row is removed (MyISAM may not enforce FK cascades).
+        $product->loadMissing(['orderItems.frameSize', 'orderItems.frameColor']);
+        foreach ($product->orderItems as $orderItem) {
+            if (filled($orderItem->line_label)) {
+                continue;
+            }
+
+            $orderItem->updateQuietly([
+                'line_label' => $orderItem->buildDisplayLabel(),
+            ]);
+        }
     }
 }

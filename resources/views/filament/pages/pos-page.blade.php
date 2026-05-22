@@ -840,67 +840,64 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                     <h3>{{ $vp->name }}</h3>
                     <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Choose size and/or color, then add to cart.</p>
                     @php
-                        $colorsAllModal = $vp->configuredColorOptions();
-                        $sizesAllModal  = $vp->configuredSizeOptions();
-                        // In-stock IDs for each axis, filtered by the current partial selection.
-                        // availableColor/SizeOptions only returns rows with qty >= 1 for the branch.
-                        $availColorIds = $vp->availableColorOptions($this->branchId, $this->variantPickSizeId)->pluck('id')->flip();
-                        $availSizeIds  = $vp->availableSizeOptions($this->branchId, $this->variantPickColorId)->pluck('id')->flip();
-                        // If no in-stock IDs exist at all (branch stock data missing), fall back to
-                        // treating everything as available so the select is not fully locked out.
-                        $colorStockKnown = $colorsAllModal->isNotEmpty() && $vp->availableColorOptions($this->branchId)->isNotEmpty();
-                        $sizeStockKnown  = $sizesAllModal->isNotEmpty() && $vp->availableSizeOptions($this->branchId)->isNotEmpty();
+                        // Colors: query product_variants directly (not via pivot) so we get
+                        // exactly the colours that have in-branch stock. Fall back to all
+                        // configured colours only when no coloured variants exist (stock is
+                        // entirely under the default null/null variant).
+                        $inStockColors = $vp->posColorOptionsInStock($this->branchId);
+                        $colorOptions  = $inStockColors->isNotEmpty()
+                            ? $inStockColors
+                            : $vp->configuredColorOptions();
+                        $hasColors = $colorOptions->isNotEmpty();
+
+                        // Sizes: once a color is picked, use posStrictSizeOptionsForColor which only
+                        // returns sizes that actually have a variant pairing with the selected color —
+                        // this prevents "invalid combination" errors when a color is selected.
+                        // Before any color is picked, show all in-stock sizes as a fallback.
+                        $pickedColorId = $this->variantPickColorId ? (int) $this->variantPickColorId : null;
+                        if ($pickedColorId !== null) {
+                            $sizeOptions = $vp->posStrictSizeOptionsForColor($this->branchId, $pickedColorId);
+                        } else {
+                            $inStockSizes = $vp->availableSizeOptions($this->branchId);
+                            $sizeOptions  = $inStockSizes->isNotEmpty()
+                                ? $inStockSizes
+                                : $vp->configuredSizeOptions();
+                        }
+                        $hasSizes        = $sizeOptions->isNotEmpty();
+                        $showSizeNow     = $hasSizes && (! $hasColors || $pickedColorId !== null);
+                        $sizeNeedsColor  = $hasColors && $pickedColorId === null && $vp->configuredSizeOptions()->isNotEmpty();
                     @endphp
-                    @if($colorsAllModal->isNotEmpty())
+
+                    @if($hasColors)
                         <div class="pos-cart-field">
-                            <label>
-                                Color
-                                @if($colorsAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif
-                                @if(! $variantPickColorId && $colorsAllModal->count() > 1)
-                                    <span style="font-weight: 400; color: rgb(107 114 128); font-size: 0.75rem;"> — pick one</span>
-                                @endif
-                            </label>
-                            <div class="pos-variant-chips">
-                                @foreach($colorsAllModal as $opt)
-                                    @php
-                                        $inStock = ! $colorStockKnown || isset($availColorIds[$opt->id]);
-                                        $isSelected = (int) $variantPickColorId === (int) $opt->id;
-                                    @endphp
-                                    <button
-                                        type="button"
-                                        wire:key="color-chip-{{ $variantModalProductId }}-{{ $opt->id }}"
-                                        wire:click="selectVariantColor({{ $opt->id }})"
-                                        class="pos-variant-chip {{ $isSelected ? 'selected' : '' }} {{ ! $inStock ? 'out-of-stock' : '' }}"
-                                        title="{{ ! $inStock ? 'Out of stock' : $opt->name }}"
-                                    >{{ $opt->name }}</button>
+                            <label>Color <span style="color: var(--danger-500);">*</span></label>
+                            <select wire:model.live="variantPickColorId">
+                                <option value="">— Select color —</option>
+                                @foreach($colorOptions as $opt)
+                                    <option value="{{ $opt->id }}">{{ $opt->name }}</option>
                                 @endforeach
-                            </div>
+                            </select>
                         </div>
                     @endif
-                    @if($sizesAllModal->isNotEmpty())
+
+                    @if($showSizeNow)
                         <div class="pos-cart-field">
-                            <label>
-                                Size
-                                @if($sizesAllModal->count() > 1)<span style="color: var(--danger-500);">*</span>@endif
-                                @if(! $variantPickSizeId && $sizesAllModal->count() > 1)
-                                    <span style="font-weight: 400; color: rgb(107 114 128); font-size: 0.75rem;"> — pick one</span>
+                            <label>Size <span style="color: var(--danger-500);">*</span></label>
+                            <select wire:model.live="variantPickSizeId">
+                                @if($sizeOptions->count() > 1)
+                                    <option value="">— Select size —</option>
                                 @endif
-                            </label>
-                            <div class="pos-variant-chips">
-                                @foreach($sizesAllModal as $opt)
-                                    @php
-                                        $inStock = ! $sizeStockKnown || isset($availSizeIds[$opt->id]);
-                                        $isSelected = (int) $variantPickSizeId === (int) $opt->id;
-                                    @endphp
-                                    <button
-                                        type="button"
-                                        wire:key="size-chip-{{ $variantModalProductId }}-{{ $opt->id }}"
-                                        wire:click="selectVariantSize({{ $opt->id }})"
-                                        class="pos-variant-chip {{ $isSelected ? 'selected' : '' }} {{ ! $inStock ? 'out-of-stock' : '' }}"
-                                        title="{{ ! $inStock ? 'Out of stock' : $opt->name }}"
-                                    >{{ $opt->name }}</button>
+                                @foreach($sizeOptions as $opt)
+                                    <option value="{{ $opt->id }}">{{ $opt->name }}</option>
                                 @endforeach
-                            </div>
+                            </select>
+                        </div>
+                    @elseif($sizeNeedsColor)
+                        <div class="pos-cart-field">
+                            <label>Size</label>
+                            <select disabled style="opacity: 0.5; cursor: not-allowed;">
+                                <option>— Select a color first —</option>
+                            </select>
                         </div>
                     @endif
                     <div class="pos-modal-actions">

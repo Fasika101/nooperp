@@ -141,6 +141,9 @@ class OrderObserver
             'deleted_by_user_id' => auth()->id(),
             'notes' => $order->deletion_notes ?? null,
         ]);
+
+        // MyISAM may not enforce FK cascade — remove line items explicitly after snapshot.
+        $order->orderItems()->delete();
     }
 
 }
