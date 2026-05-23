@@ -19,6 +19,7 @@ use App\Models\Prescription;
 use App\Models\Product;
 use App\Models\ProductOption;
 use App\Models\ProductVariant;
+use App\Models\RepairType;
 use App\Models\Setting;
 use App\Models\TaxType;
 use App\Services\PosTelegramService;
@@ -107,7 +108,7 @@ class PosPage extends Page
 
     public string $newAffiliateCommissionType = 'deduct_percent';
 
-    /** products | customize */
+    /** products | customize | repair */
     public string $posAreaTab = 'products';
 
     /** customize: null | no_rx | with_rx */
@@ -157,6 +158,10 @@ class PosPage extends Page
     public ?int $lensFrameSizeOptionId = null;
 
     public ?int $lensFrameColorOptionId = null;
+
+    public ?int $repairTypeId = null;
+
+    public string $repairPrice = '';
 
     public function mount(): void
     {
@@ -745,7 +750,7 @@ class PosPage extends Page
 
     public function updateCartQuantity(int $index, int $quantity): void
     {
-        if (! empty($this->cart[$index]['is_optical'])) {
+        if (! empty($this->cart[$index]['is_optical']) || ! empty($this->cart[$index]['is_repair'])) {
             return;
         }
 
@@ -1929,6 +1934,97 @@ class PosPage extends Page
     public function getOpticalLineImageUrl(): string
     {
         return 'https://ui-avatars.com/api/?name=Lens&color=0F766E&background=CCFBF1';
+    }
+
+    public function getRepairLineImageUrl(): string
+    {
+        return 'https://ui-avatars.com/api/?name=Repair&color=B45309&background=FFEDD5';
+    }
+
+    public function getRepairTypes()
+    {
+        return RepairType::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function addRepairToCart(): void
+    {
+        $repairType = $this->repairTypeId
+            ? RepairType::query()->where('is_active', true)->whereKey($this->repairTypeId)->first()
+            : null;
+
+        if (! $repairType) {
+            Notification::make()
+                ->warning()
+                ->title('Select repair type')
+                ->body('Choose a repair type from the dropdown.')
+                ->send();
+
+            return;
+        }
+
+        $priceRaw = trim($this->repairPrice);
+        if ($priceRaw === '' || ! is_numeric($priceRaw)) {
+            Notification::make()
+                ->warning()
+                ->title('Enter a valid price')
+                ->body('Repair price is entered manually for each sale.')
+                ->send();
+
+            return;
+        }
+
+        $price = round((float) $priceRaw, 2);
+        if ($price < 0) {
+            Notification::make()
+                ->warning()
+                ->title('Invalid price')
+                ->body('Price cannot be negative.')
+                ->send();
+
+            return;
+        }
+
+        $serviceId = Product::opticalServiceProductId();
+        if (! $serviceId) {
+            Notification::make()
+                ->danger()
+                ->title('Service product missing')
+                ->body('Run migrations or create a product flagged as non-inventory (service) for POS service lines.')
+                ->send();
+
+            return;
+        }
+
+        $lineLabel = 'Repair: '.$repairType->name;
+
+        $this->cart[] = [
+            'product_id' => $serviceId,
+            'name' => $lineLabel,
+            'line_label' => $lineLabel,
+            'color_option_id' => null,
+            'size_option_id' => null,
+            'color_name' => null,
+            'size_name' => null,
+            'price' => $price,
+            'unit_cost' => 0.0,
+            'quantity' => 1,
+            'image' => null,
+            'is_optical' => false,
+            'is_repair' => true,
+            'optical_meta' => null,
+        ];
+
+        $this->repairTypeId = null;
+        $this->repairPrice = '';
+
+        Notification::make()
+            ->success()
+            ->title('Repair added to cart')
+            ->send();
     }
 
     public function getHeading(): ?string

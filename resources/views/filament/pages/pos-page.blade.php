@@ -306,6 +306,7 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                 <div class="pos-lens-tabs">
                     <button type="button" wire:click="$set('posAreaTab', 'products')" class="pos-lens-tab {{ $posAreaTab === 'products' ? 'active' : '' }}">Products</button>
                     <button type="button" wire:click="$set('posAreaTab', 'customize')" class="pos-lens-tab {{ $posAreaTab === 'customize' ? 'active' : '' }}">Lens customization</button>
+                    <button type="button" wire:click="$set('posAreaTab', 'repair')" class="pos-lens-tab {{ $posAreaTab === 'repair' ? 'active' : '' }}">Repair</button>
                 </div>
 
                 @if($posAreaTab === 'products')
@@ -356,7 +357,7 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                             @endforelse
                         </div>
                     </div>
-                @else
+                @elseif($posAreaTab === 'customize')
                     <div class="pos-customize">
                         <p class="pos-customize-title">Add lenses to the sale</p>
                         <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Add frames from <strong>Products</strong>, then configure lenses here. Each lens is added as its own cart line with price.</p>
@@ -550,6 +551,37 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                             <p style="font-size: 0.875rem; color: rgb(107 114 128);">Choose <strong>Lens (no prescription)</strong> or <strong>Lens (with prescription)</strong> above.</p>
                         @endif
                     </div>
+                @elseif($posAreaTab === 'repair')
+                    <div class="pos-customize">
+                        <p class="pos-customize-title">Add a repair to the sale</p>
+                        <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Choose the repair type and enter the price for this job. Repair types are managed under <strong>Settings → Repair types</strong>.</p>
+
+                        <div class="pos-opt-section" style="max-width: 24rem;">
+                            <div class="pos-cart-field">
+                                <label>Repair type <span style="color: var(--danger-500);">*</span></label>
+                                <select wire:model="repairTypeId">
+                                    <option value="">— Select —</option>
+                                    @foreach($this->getRepairTypes() as $repairType)
+                                        <option value="{{ $repairType->id }}">{{ $repairType->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="pos-cart-field">
+                                <label>Price <span style="color: var(--danger-500);">*</span></label>
+                                <input type="number" wire:model="repairPrice" min="0" step="0.01" placeholder="Enter price for this repair" />
+                            </div>
+                        </div>
+
+                        @if($this->getRepairTypes()->isEmpty())
+                            <p style="font-size: 0.875rem; color: rgb(107 114 128); margin-top: 1rem;">No repair types yet. Add options under Settings → Repair types.</p>
+                        @else
+                            <div class="pos-customize-footer">
+                                <x-filament::button wire:click="addRepairToCart" color="primary">
+                                    Add repair to cart
+                                </x-filament::button>
+                            </div>
+                        @endif
+                    </div>
                 @endif
             </div>
 
@@ -566,12 +598,19 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                     @forelse($cart as $index => $item)
                         <div class="pos-cart-item">
                             <div class="pos-cart-item-img">
-                                <img src="{{ !empty($item['is_optical']) ? $this->getOpticalLineImageUrl() : $this->getProductImageUrl($item['image'] ?? null) }}" alt="{{ $item['name'] }}" />
+                                @php
+                                    $cartLineImage = ! empty($item['is_optical'])
+                                        ? $this->getOpticalLineImageUrl()
+                                        : (! empty($item['is_repair'])
+                                            ? $this->getRepairLineImageUrl()
+                                            : $this->getProductImageUrl($item['image'] ?? null));
+                                @endphp
+                                <img src="{{ $cartLineImage }}" alt="{{ $item['name'] }}" />
                             </div>
                             <div class="pos-cart-item-body">
                                 <div class="pos-cart-item-name">{{ $item['name'] }}</div>
                                 <div class="pos-cart-item-qty">
-                                    @if(!empty($item['is_optical']))
+                                    @if(!empty($item['is_optical']) || !empty($item['is_repair']))
                                         <span style="font-size: 0.75rem; color: rgb(107 114 128);">Qty fixed</span>
                                     @else
                                         <button type="button" wire:click="updateCartQuantity({{ $index }}, {{ $item['quantity'] - 1 }})">−</button>
