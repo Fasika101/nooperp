@@ -6,6 +6,7 @@ use App\Filament\Resources\ExpenseResource;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\Setting;
+use App\Services\ExpenseExporter;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Carbon\Carbon;
 use Filament\Actions\Action;
@@ -69,7 +70,7 @@ class ExpenseReportsPage extends Page implements HasTable
 
         return $table
             ->heading('Filtered expenses')
-            ->description('Pick an expense type (optional), a report type, then either a preset period or a custom date range. When both From and Until are set, the custom range is used instead of the period.')
+            ->description('Pick one or more expense types (optional), a report type, then either a preset period or a custom date range. When both From and Until are set, the custom range is used instead of the period.')
             ->query(function (): Builder {
                 $query = Expense::query()->with(['expenseType', 'bankAccount', 'branch']);
                 if (auth()->user()?->isBranchRestricted()) {
@@ -110,20 +111,23 @@ class ExpenseReportsPage extends Page implements HasTable
             ->defaultSort('date', 'desc')
             ->filters([
                 SelectFilter::make('expense_type_id')
-                    ->label('Expense type')
+                    ->label('Expense types')
                     ->relationship(
                         'expenseType',
                         'name',
                         fn ($query) => $query->where('is_active', true)->orderBy('name'),
                     )
+                    ->multiple()
                     ->searchable()
                     ->preload()
                     ->placeholder('All types')
                     ->query(function (Builder $query, array $data): Builder {
-                        $value = $data['value'] ?? null;
+                        $values = ExpenseExporter::filteredExpenseTypeIds([
+                            'expense_type_id' => $data,
+                        ]);
 
-                        return filled($value)
-                            ? $query->where($this->qualifyExpenseColumn('expense_type_id'), $value)
+                        return $values !== []
+                            ? $query->whereIn($this->qualifyExpenseColumn('expense_type_id'), $values)
                             : $query;
                     }),
                 SelectFilter::make('scope')
@@ -238,9 +242,9 @@ class ExpenseReportsPage extends Page implements HasTable
             $this->applyPeriodToExpenseQuery($query, $period);
         }
 
-        $typeId = data_get($filters, 'expense_type_id.value');
-        if (filled($typeId)) {
-            $query->where($this->qualifyExpenseColumn('expense_type_id'), $typeId);
+        $typeIds = ExpenseExporter::filteredExpenseTypeIds($filters);
+        if ($typeIds !== []) {
+            $query->whereIn($this->qualifyExpenseColumn('expense_type_id'), $typeIds);
         }
 
         $scope = (string) data_get($filters, 'scope.value', data_get($filters, 'scope', 'all'));
@@ -355,10 +359,10 @@ class ExpenseReportsPage extends Page implements HasTable
             ? 'Dates: '.Carbon::parse($from)->toFormattedDateString().' – '.Carbon::parse($until)->toFormattedDateString()
             : 'Period: '.($periodLabels[$period] ?? $period);
 
-        $typeId = data_get($filters, 'expense_type_id.value');
-        $typeLine = filled($typeId)
-            ? 'Expense type: '.ExpenseType::whereKey($typeId)->value('name')
-            : 'Expense type: All types';
+        $typeLabel = ExpenseExporter::filteredExpenseTypeLabel($filters);
+        $typeLine = $typeLabel
+            ? 'Expense types: '.$typeLabel
+            : 'Expense types: All types';
 
         $csv = "Expense report\n";
         $csv .= $dateLine."\n";

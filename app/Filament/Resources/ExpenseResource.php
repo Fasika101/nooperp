@@ -237,7 +237,7 @@ class ExpenseResource extends Resource
         $currency = Setting::getDefaultCurrency();
 
         return $table
-            ->description('Filter by expense type and date range, then export the filtered list as a styled Excel file.')
+            ->description('Filter by one or more expense types and a date range, then export the filtered list as a styled Excel file.')
             ->columns([
                 Tables\Columns\TextColumn::make('date')
                     ->date()
@@ -276,8 +276,9 @@ class ExpenseResource extends Resource
             ->defaultSort('date', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('expense_type_id')
-                    ->label('Expense type')
+                    ->label('Expense types')
                     ->relationship('expenseType', 'name', fn ($query) => $query->orderBy('name'))
+                    ->multiple()
                     ->searchable()
                     ->preload()
                     ->placeholder('All types'),

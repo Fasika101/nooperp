@@ -102,7 +102,15 @@ class ExpenseExporter
 
     public function filename(?string $typeName): string
     {
-        $slug = $typeName ? Str::slug($typeName) : 'all-types';
+        if (! $typeName) {
+            return 'expenses-all-types-'.now()->format('Y-m-d-His').'.xlsx';
+        }
+
+        $slug = Str::slug($typeName);
+
+        if (strlen($slug) > 80) {
+            $slug = 'selected-types';
+        }
 
         return 'expenses-'.$slug.'-'.now()->format('Y-m-d-His').'.xlsx';
     }
@@ -367,16 +375,50 @@ class ExpenseExporter
 
     /**
      * @param  array<string, mixed>  $filters
+     * @return list<int>
      */
-    protected function resolveExpenseTypeName(array $filters): ?string
+    public static function filteredExpenseTypeIds(array $filters): array
     {
-        $typeId = data_get($filters, 'expense_type_id.value', data_get($filters, 'expense_type_id'));
+        $raw = data_get($filters, 'expense_type_id.values')
+            ?? data_get($filters, 'expense_type_id.value')
+            ?? data_get($filters, 'expense_type_id');
 
-        if (! filled($typeId)) {
+        if (! filled($raw)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            fn ($id): int => (int) $id,
+            (array) $raw,
+        ))));
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public static function filteredExpenseTypeLabel(array $filters): ?string
+    {
+        $ids = self::filteredExpenseTypeIds($filters);
+
+        if ($ids === []) {
             return null;
         }
 
-        return ExpenseType::whereKey($typeId)->value('name');
+        $names = ExpenseType::query()
+            ->whereIn('id', $ids)
+            ->orderBy('name')
+            ->pluck('name')
+            ->all();
+
+        return implode(', ', $names);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    protected function resolveExpenseTypeName(array $filters): ?string
+    {
+        return self::filteredExpenseTypeLabel($filters);
     }
 
     protected function reportTitle(?string $typeName): string
