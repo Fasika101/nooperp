@@ -51,8 +51,9 @@ class ListExpenses extends ListRecords
                         ->schema([
                             DatePicker::make('pay_date')
                                 ->label('Pay date')
+                                ->helperText('The calendar month of this date is the salary month (e.g. 31 May pays May). The next salary is due one month after the last payment.')
                                 ->required()
-                                ->default(now()->startOfMonth())
+                                ->default(now())
                                 ->native(false),
                             Select::make('bank_account_id')
                                 ->label('Pay from account')
@@ -63,7 +64,7 @@ class ListExpenses extends ListRecords
                                 ->default(fn (): ?int => BankAccount::getDefaultAccountForBranch(Branch::getDefaultBranch()?->id)?->id
                                     ?? BankAccount::getDefaultAccount()?->id),
                             Toggle::make('skip_existing')
-                                ->label('Skip if this employee already has a salary expense in that month')
+                                ->label('Skip employees already paid for this month or not yet due (one month after last pay)')
                                 ->default(true),
                         ]),
                     Step::make('Preview report')

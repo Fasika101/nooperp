@@ -26,6 +26,8 @@ class PayrollExpenseGenerator
 
     public const STATUS_SKIPPED_BANK_UNAVAILABLE = 'skipped_bank_unavailable';
 
+    public const STATUS_SKIPPED_NOT_DUE_YET = 'skipped_not_due_yet';
+
     public function __construct(
         protected PayrollProration $proration,
     ) {}
@@ -293,18 +295,25 @@ class PayrollExpenseGenerator
         }
 
         if ($skipIfAlreadyInMonth) {
-            $exists = Expense::query()
-                ->where('employee_id', $employee->id)
-                ->where('expense_type_id', $salariesTypeId)
-                ->whereYear('date', $payDate->year)
-                ->whereMonth('date', $payDate->month)
-                ->exists();
-
-            if ($exists) {
+            if ($this->hasSalaryExpenseInMonth($employee->id, $salariesTypeId, $payDate)) {
                 return [
                     ...$base,
                     'status' => self::STATUS_SKIPPED_EXISTING,
-                    'status_label' => 'Already paid this month',
+                    'status_label' => __('Already paid for :month', [
+                        'month' => $payDate->format('F Y'),
+                    ]),
+                ];
+            }
+
+            $nextEligibleDate = $this->nextSalaryEligibleDate($employee->id, $salariesTypeId);
+
+            if ($nextEligibleDate && $payDate->lt($nextEligibleDate)) {
+                return [
+                    ...$base,
+                    'status' => self::STATUS_SKIPPED_NOT_DUE_YET,
+                    'status_label' => __('Next salary available on :date', [
+                        'date' => $nextEligibleDate->toFormattedDateString(),
+                    ]),
                 ];
             }
         }
@@ -341,6 +350,37 @@ class PayrollExpenseGenerator
             'bank_account' => $bank->name,
             'bank_account_id' => $bank->id,
         ];
+    }
+
+    /**
+     * Salary month follows the pay date (pay on 31 May = May payroll).
+     */
+    public function hasSalaryExpenseInMonth(int $employeeId, int $salariesTypeId, Carbon $payDate): bool
+    {
+        return Expense::query()
+            ->where('employee_id', $employeeId)
+            ->where('expense_type_id', $salariesTypeId)
+            ->whereYear('date', $payDate->year)
+            ->whereMonth('date', $payDate->month)
+            ->exists();
+    }
+
+    /**
+     * Earliest date the next salary can be paid — one month after the last salary payment.
+     */
+    public function nextSalaryEligibleDate(int $employeeId, int $salariesTypeId): ?Carbon
+    {
+        $lastPaidOn = Expense::query()
+            ->where('employee_id', $employeeId)
+            ->where('expense_type_id', $salariesTypeId)
+            ->orderByDesc('date')
+            ->value('date');
+
+        if (! $lastPaidOn) {
+            return null;
+        }
+
+        return Carbon::parse($lastPaidOn)->addMonthNoOverflow()->startOfDay();
     }
 
     /**

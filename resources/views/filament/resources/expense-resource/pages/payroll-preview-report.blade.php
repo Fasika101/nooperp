@@ -17,6 +17,8 @@
             </div>
             <div class="mt-1 text-xs text-primary-700/80 dark:text-primary-300/80">
                 Pay date: {{ \Illuminate\Support\Carbon::parse($report['pay_date'])->toFormattedDateString() }}
+                · Salary month: {{ $report['pay_month'] }}
+                · Next payroll is due one month after each employee’s last salary payment
                 · Partial-month salaries are prorated by days worked
             </div>
             @if ($report['bank_account_name'] ?? null)
@@ -110,7 +112,7 @@
                                     <span class="inline-flex rounded-full bg-success-100 px-2.5 py-1 text-xs font-medium text-success-800 dark:bg-success-500/20 dark:text-success-300">
                                         {{ $line['status_label'] }}
                                     </span>
-                                @elseif ($line['status'] === PayrollExpenseGenerator::STATUS_SKIPPED_EXISTING)
+                                @elseif (in_array($line['status'], [PayrollExpenseGenerator::STATUS_SKIPPED_EXISTING, PayrollExpenseGenerator::STATUS_SKIPPED_NOT_DUE_YET], true))
                                     <span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
                                         {{ $line['status_label'] }}
                                     </span>

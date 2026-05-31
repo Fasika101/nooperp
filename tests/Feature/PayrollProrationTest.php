@@ -114,6 +114,79 @@ class PayrollProrationTest extends TestCase
         $this->assertTrue($report['lines'][0]['is_prorated']);
     }
 
+    public function test_may_salary_blocks_repeat_payment_in_same_month(): void
+    {
+        [$generator, $employee, $account] = $this->makePayrollFixtures();
+
+        $generator->generate(Carbon::parse('2026-05-31'), bankAccountId: $account->id);
+
+        $preview = $generator->preview(
+            Carbon::parse('2026-05-31'),
+            bankAccountId: $account->id,
+        );
+
+        $this->assertSame(0, $preview['ready_count']);
+        $this->assertSame(PayrollExpenseGenerator::STATUS_SKIPPED_EXISTING, $preview['lines'][0]['status']);
+    }
+
+    public function test_next_salary_is_due_one_month_after_last_payment(): void
+    {
+        [$generator, $employee, $account] = $this->makePayrollFixtures();
+
+        $generator->generate(Carbon::parse('2026-05-31'), bankAccountId: $account->id);
+
+        $tooEarly = $generator->preview(
+            Carbon::parse('2026-06-15'),
+            bankAccountId: $account->id,
+        );
+
+        $this->assertSame(0, $tooEarly['ready_count']);
+        $this->assertSame(PayrollExpenseGenerator::STATUS_SKIPPED_NOT_DUE_YET, $tooEarly['lines'][0]['status']);
+
+        $dueDate = $generator->preview(
+            Carbon::parse('2026-06-30'),
+            bankAccountId: $account->id,
+        );
+
+        $this->assertSame(1, $dueDate['ready_count']);
+        $this->assertSame(PayrollExpenseGenerator::STATUS_READY, $dueDate['lines'][0]['status']);
+    }
+
+    /**
+     * @return array{0: PayrollExpenseGenerator, 1: Employee, 2: BankAccount}
+     */
+    protected function makePayrollFixtures(): array
+    {
+        ExpenseType::query()->create([
+            'name' => ExpenseType::NAME_SALARIES,
+            'is_active' => true,
+        ]);
+
+        $branch = Branch::query()->create([
+            'name' => 'Payroll Branch',
+            'code' => 'payroll-branch',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $account = BankAccount::query()->create([
+            'name' => 'Cash',
+            'branch_id' => $branch->id,
+            'currency' => 'ETB',
+            'opening_balance' => 50000,
+            'current_balance' => 50000,
+            'is_default' => true,
+        ]);
+
+        $employee = $this->makeEmployee([
+            'branch_id' => $branch->id,
+            'hire_date' => '2026-01-01',
+            'base_salary' => 20000,
+        ]);
+
+        return [app(PayrollExpenseGenerator::class), $employee, $account];
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
