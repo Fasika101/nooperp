@@ -10,6 +10,7 @@ use App\Models\Employee;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\Setting;
+use Carbon\Carbon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -236,6 +237,7 @@ class ExpenseResource extends Resource
         $currency = Setting::getDefaultCurrency();
 
         return $table
+            ->description('Filter by expense type and date range, then export the filtered list as a styled Excel file.')
             ->columns([
                 Tables\Columns\TextColumn::make('date')
                     ->date()
@@ -273,6 +275,51 @@ class ExpenseResource extends Resource
             ])
             ->defaultSort('date', 'desc')
             ->filters([
+                Tables\Filters\SelectFilter::make('expense_type_id')
+                    ->label('Expense type')
+                    ->relationship('expenseType', 'name', fn ($query) => $query->orderBy('name'))
+                    ->searchable()
+                    ->preload()
+                    ->placeholder('All types'),
+                Tables\Filters\Filter::make('date_range')
+                    ->label('Date range')
+                    ->schema([
+                        DatePicker::make('from')
+                            ->label('From')
+                            ->native(false),
+                        DatePicker::make('until')
+                            ->label('Until')
+                            ->native(false),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $from = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+
+                        if (! filled($from) || ! filled($until)) {
+                            return $query;
+                        }
+
+                        return $query->whereBetween('date', [
+                            Carbon::parse($from)->format('Y-m-d'),
+                            Carbon::parse($until)->format('Y-m-d'),
+                        ]);
+                    })
+                    ->indicateUsing(function (array $state): array {
+                        $from = $state['from'] ?? null;
+                        $until = $state['until'] ?? null;
+
+                        if (! filled($from) || ! filled($until)) {
+                            return [];
+                        }
+
+                        return [
+                            Tables\Filters\Indicator::make(
+                                Carbon::parse($from)->toFormattedDateString()
+                                .' – '
+                                .Carbon::parse($until)->toFormattedDateString(),
+                            ),
+                        ];
+                    }),
                 Tables\Filters\SelectFilter::make('employee_id')
                     ->label('Employee')
                     ->relationship('employee', 'full_name', fn ($query) => $query->orderBy('full_name'))
@@ -284,6 +331,7 @@ class ExpenseResource extends Resource
                     ->searchable()
                     ->preload(),
             ])
+            ->persistFiltersInSession()
             ->actions([
                 ViewAction::make(),
                 EditAction::make(),

@@ -188,6 +188,7 @@ class RolesSeeder extends Seeder
         return array_merge($perms, [
             'View:Dashboard',
             'View:LibaStatsOverviewWidget',
+            'View:ProductStatsPage',
         ]);
     }
 
