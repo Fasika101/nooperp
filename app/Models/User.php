@@ -91,7 +91,13 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
             return [];
         }
 
-        return $this->branches()->pluck('branches.id')->map(fn ($id) => (int) $id)->all();
+        $ids = $this->branches()->pluck('branches.id')->map(fn ($id) => (int) $id)->all();
+
+        if ($ids === [] && filled($this->branch_id)) {
+            return [(int) $this->branch_id];
+        }
+
+        return $ids;
     }
 
     public function employee(): HasOne
@@ -110,7 +116,27 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
 
     public function isBranchRestricted(): bool
     {
-        return ! $this->hasUnrestrictedBranchAccess() && $this->branches()->exists();
+        if ($this->hasUnrestrictedBranchAccess()) {
+            return false;
+        }
+
+        return $this->branches()->exists() || filled($this->branch_id);
+    }
+
+    /**
+     * True when the user may only work in exactly one branch (selector should be locked).
+     */
+    public function isLockedToSingleBranch(): bool
+    {
+        return $this->isBranchRestricted() && count($this->branchIds()) === 1;
+    }
+
+    /**
+     * Default branch for forms (primary assigned branch, or legacy branch_id).
+     */
+    public function defaultBranchIdForForms(): ?int
+    {
+        return $this->primaryBranchId();
     }
 
     /**

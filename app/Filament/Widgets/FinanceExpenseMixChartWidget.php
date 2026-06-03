@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Widgets\Concerns\ChecksPageRoute;
 use App\Filament\Widgets\Concerns\ChecksShieldWidgetPermission;
 use App\Filament\Widgets\Concerns\ScopesFinanceDataByBranch;
 use App\Models\Expense;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 class FinanceExpenseMixChartWidget extends ChartWidget
 {
+    use ChecksPageRoute;
     use ChecksShieldWidgetPermission;
     use HasWidgetShield;
     use ScopesFinanceDataByBranch;
@@ -26,7 +28,7 @@ class FinanceExpenseMixChartWidget extends ChartWidget
     public static function canView(): bool
     {
         return static::hasWidgetPermission()
-            && request()->routeIs('filament.admin.pages.finance-page');
+            && static::isOnFilamentPageRoute('filament.admin.pages.finance-page');
     }
 
     protected function getType(): string

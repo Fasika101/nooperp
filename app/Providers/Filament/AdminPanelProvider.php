@@ -2,24 +2,7 @@
 
 namespace App\Providers\Filament;
 
-use App\Filament\Pages\AccountsReceivablePage;
-use App\Filament\Pages\Dashboard;
-use App\Filament\Pages\DataWipePage;
 use App\Filament\Pages\EditProfilePage;
-use App\Filament\Pages\ExpenseReportsPage;
-use App\Filament\Pages\FinancePage;
-use App\Filament\Pages\IntegrationsPage;
-use App\Filament\Pages\LandingPageSettingsPage;
-use App\Filament\Pages\MyProjectsPage;
-use App\Filament\Pages\MyTasksPage;
-use App\Filament\Pages\PosPage;
-use App\Filament\Pages\ProfitLossReportPage;
-use App\Filament\Pages\SettingsPage;
-use App\Filament\Pages\TelegramCrmReportPage;
-use App\Filament\Pages\UnsettledAffiliateCommissionsPage;
-use App\Filament\Widgets\LibaStatsOverviewWidget;
-use App\Filament\Widgets\RevenueChartWidget;
-use App\Filament\Widgets\SalesChartWidget;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -76,27 +59,8 @@ class AdminPanelProvider extends PanelProvider
             ->discoverClusters(in: app_path('Filament/Clusters'), for: 'App\\Filament\\Clusters')
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
-            ->pages([
-                Dashboard::class,
-                PosPage::class,
-                FinancePage::class,
-                ProfitLossReportPage::class,
-                ExpenseReportsPage::class,
-                AccountsReceivablePage::class,
-                UnsettledAffiliateCommissionsPage::class,
-                SettingsPage::class,
-                LandingPageSettingsPage::class,
-                IntegrationsPage::class,
-                DataWipePage::class,
-                TelegramCrmReportPage::class,
-                MyProjectsPage::class,
-                MyTasksPage::class,
-            ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
-                LibaStatsOverviewWidget::class,
-                RevenueChartWidget::class,
-                SalesChartWidget::class,
                 AccountWidget::class,
             ])
             ->middleware([

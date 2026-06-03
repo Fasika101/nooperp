@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\ConfiguresBranchSelect;
 use App\Filament\Resources\BranchStockTransferResource\Pages;
 use App\Models\Branch;
 use App\Models\BranchProductStock;
@@ -23,6 +24,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class BranchStockTransferResource extends Resource
 {
+    use ConfiguresBranchSelect;
+
     protected static ?string $model = BranchStockTransfer::class;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-arrows-right-left';
@@ -68,18 +71,13 @@ class BranchStockTransferResource extends Resource
                     ->required(fn (Get $get): bool => self::productHasMultipleVariants((int) ($get('product_id') ?? 0))),
                 Select::make('from_branch_id')
                     ->label('From branch')
-                    ->options(fn () => Branch::query()
-                        ->where('is_active', true)
-                        ->when(auth()->user()?->isBranchRestricted(), fn (Builder $q) => $q->whereIn('id', auth()->user()->branchIds()))
-                        ->orderByDesc('is_default')
-                        ->orderBy('name')
-                        ->pluck('name', 'id'))
+                    ->options(fn () => static::branchSelectOptions())
                     ->required()
                     ->searchable()
                     ->preload()
                     ->live()
-                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn () => auth()->user()?->isBranchRestricted() && count(auth()->user()->branchIds()) === 1)
+                    ->default(fn () => static::defaultBranchIdForSelect())
+                    ->disabled(fn () => static::isBranchSelectLocked())
                     ->helperText(fn (Get $get): ?string => self::branchAvailabilityLine(
                         (int) ($get('product_id') ?? 0),
                         (int) ($get('from_branch_id') ?? 0),

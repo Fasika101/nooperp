@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\ConfiguresBranchSelect;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\BankAccount;
 use App\Models\Branch;
@@ -34,6 +35,8 @@ use Filament\Tables\Table;
 
 class ProductResource extends Resource
 {
+    use ConfiguresBranchSelect;
+
     protected static ?string $model = Product::class;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-cube';
@@ -449,17 +452,12 @@ class ProductResource extends Resource
                     ->schema([
                         Select::make('branch_id')
                             ->label('Branch')
-                            ->options(fn () => Branch::query()
-                                ->where('is_active', true)
-                                ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereIn('id', auth()->user()->branchIds()))
-                                ->orderByDesc('is_default')
-                                ->orderBy('name')
-                                ->pluck('name', 'id'))
+                            ->options(fn () => static::branchSelectOptions())
                             ->required()
                             ->searchable()
                             ->preload()
-                            ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                            ->disabled(fn () => auth()->user()?->isBranchRestricted() && count(auth()->user()->branchIds()) === 1),
+                            ->default(fn () => static::defaultBranchIdForSelect())
+                            ->disabled(fn () => static::isBranchSelectLocked()),
                         Select::make('color_option_id')
                             ->label('Color')
                             ->options(function (Get $get) {
@@ -616,8 +614,8 @@ class ProductResource extends Resource
                     ->label('Branch')
                     ->options(fn () => Branch::query()
                         ->when(auth()->user()?->isBranchRestricted(), fn ($query) => $query->whereIn('id', auth()->user()->branchIds()))
-                                ->orderBy('name')
-                                ->pluck('name', 'id'))
+                        ->orderBy('name')
+                        ->pluck('name', 'id'))
                     ->query(function ($query, array $data) {
                         $branchId = $data['value'] ?? null;
 

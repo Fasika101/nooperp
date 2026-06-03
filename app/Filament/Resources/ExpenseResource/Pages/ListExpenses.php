@@ -51,10 +51,32 @@ class ListExpenses extends ListRecords
                         ->schema([
                             DatePicker::make('pay_date')
                                 ->label('Pay date')
-                                ->helperText('The calendar month of this date is the salary month (e.g. 31 May pays May). The next salary is due one month after the last payment.')
+                                ->helperText('Must be the 30th or 31st. That date sets the salary month (e.g. 31 May pays May). The next salary is due on the 30th or 31st of the following month.')
                                 ->required()
-                                ->default(now())
-                                ->native(false),
+                                ->default(fn (): Carbon => PayrollExpenseGenerator::defaultPayDate())
+                                ->native(false)
+                                ->rule(function (): \Closure {
+                                    return function (string $attribute, mixed $value, \Closure $fail): void {
+                                        if (blank($value)) {
+                                            return;
+                                        }
+
+                                        $date = Carbon::parse($value);
+
+                                        if (! PayrollExpenseGenerator::isAllowedPayrollPayDate($date)) {
+                                            $suggested = PayrollExpenseGenerator::suggestedPayrollPayDate($date);
+
+                                            $fail($suggested
+                                                ? __('Pay date must be the 30th or 31st. Use :date for :month.', [
+                                                    'date' => $suggested->toFormattedDateString(),
+                                                    'month' => $date->format('F Y'),
+                                                ])
+                                                : __('Pay date must be the 30th or 31st. :month has no valid pay date.', [
+                                                    'month' => $date->format('F Y'),
+                                                ]));
+                                        }
+                                    };
+                                }),
                             Select::make('bank_account_id')
                                 ->label('Pay from account')
                                 ->options(fn (): array => $this->payrollBankAccountOptions())
@@ -104,7 +126,7 @@ class ListExpenses extends ListRecords
 
                         $preview = $generator->preview($payDate, $skipExisting, bankAccountId: $bankAccountId);
 
-                        if ($preview['salaries_type_missing']) {
+                        if ($preview['salaries_type_missing'] || filled($preview['error_message'])) {
                             Notification::make()
                                 ->title(__('Payroll preview failed'))
                                 ->body($preview['error_message'])

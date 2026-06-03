@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Widgets\Concerns\ChecksPageRoute;
 use App\Filament\Widgets\Concerns\ChecksShieldWidgetPermission;
 use App\Models\BankAccount;
 use App\Models\Setting;
@@ -12,6 +13,7 @@ use Illuminate\Support\Number;
 
 class BankAccountOverviewWidget extends BaseWidget
 {
+    use ChecksPageRoute;
     use ChecksShieldWidgetPermission;
     use HasWidgetShield;
 
@@ -22,7 +24,7 @@ class BankAccountOverviewWidget extends BaseWidget
     public static function canView(): bool
     {
         return static::hasWidgetPermission()
-            && request()->routeIs('filament.admin.pages.finance-page');
+            && static::isOnFilamentPageRoute('filament.admin.pages.finance-page');
     }
 
     protected function getStats(): array

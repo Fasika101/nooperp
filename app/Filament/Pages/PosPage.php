@@ -23,6 +23,8 @@ use App\Models\RepairType;
 use App\Models\Setting;
 use App\Models\TaxType;
 use App\Services\PosTelegramService;
+use App\Support\OpticalRxOptions;
+use App\Support\OpticalRxPricing;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -1656,18 +1658,16 @@ class PosPage extends Page
 
     public function getOpticalRxSphereOptions(): array
     {
-        // Single vision: −6.00 to +6.00; progressive: −3.00 to +3.00 (quarter steps).
-        if ($this->opticalVision === 'progressive') {
-            return $this->buildQuarterDiopterOptions(-3.0, 3.0);
-        }
+        $vision = $this->opticalVision === 'progressive' ? 'progressive' : 'single';
 
-        return $this->buildQuarterDiopterOptions(-6.0, 6.0);
+        return OpticalRxOptions::sphereOptions($vision);
     }
 
     public function getOpticalRxCylinderOptions(): array
     {
-        // Single & progressive: −3.00 to +3.00.
-        return $this->buildQuarterDiopterOptions(-3.0, 3.0);
+        $vision = $this->opticalVision === 'progressive' ? 'progressive' : 'single';
+
+        return OpticalRxOptions::cylinderOptions($vision);
     }
 
     public function getOpticalRxAddOptions(): array
@@ -1693,75 +1693,21 @@ class PosPage extends Page
     }
 
     /**
-     * @return array<string, string>
+     * Add-on from configured SPH/CYL prices for the current OD/OS selections.
      */
-    protected function buildQuarterDiopterOptions(float $min, float $max): array
+    public function getOpticalRxDiopterAddOnAmount(): float
     {
-        $opts = ['-' => '—'];
-        $steps = (int) round(($max - $min) / 0.25);
-        for ($n = 0; $n <= $steps; $n++) {
-            $v = round($min + ($n * 0.25), 2);
-            $k = number_format($v, 2, '.', '');
-            $opts[$k] = $this->formatDiopterOptionLabel($k);
-        }
-
-        return $opts;
-    }
-
-    /**
-     * Show standard Rx-style signs: negatives with "-", positives with "+", zero plain.
-     *
-     * @param  string  $key  Stored option value (e.g. "-3.00", "0.00", "2.25")
-     */
-    protected function formatDiopterOptionLabel(string $key): string
-    {
-        if ($key === '-') {
-            return '—';
-        }
-
-        $v = (float) $key;
-        if (abs($v) < 0.00001) {
-            return '0.00';
-        }
-
-        $abs = number_format(abs($v), 2, '.', '');
-
-        return $v < 0 ? '-'.$abs : '+'.$abs;
-    }
-
-    /**
-     * Configured surcharge when progressive and either eye has cylinder magnitude &gt; 0.
-     */
-    public function getProgressiveCylinderSurchargeAmount(): float
-    {
-        if ($this->opticalVision !== 'progressive') {
+        if (! $this->opticalVision) {
             return 0.0;
         }
 
-        $rate = Setting::getOpticalProgressiveCylinderSurcharge();
-        if ($rate <= 0.0) {
-            return 0.0;
-        }
-
-        return $this->hasProgressiveNonZeroCylinderSelected() ? $rate : 0.0;
-    }
-
-    protected function hasProgressiveNonZeroCylinderSelected(): bool
-    {
-        foreach (['od_cyl', 'os_cyl'] as $prop) {
-            $raw = $this->{$prop} ?? null;
-            if ($raw === null || $raw === '' || $raw === '-') {
-                continue;
-            }
-            if (! is_numeric($raw)) {
-                continue;
-            }
-            if (abs((float) $raw) > 0.00001) {
-                return true;
-            }
-        }
-
-        return false;
+        return OpticalRxPricing::prescriptionAddOn(
+            $this->opticalVision,
+            $this->od_sph,
+            $this->od_cyl,
+            $this->os_sph,
+            $this->os_cyl,
+        );
     }
 
     public function appendOpticalCartLine(string $lineLabel, float $price, array $opticalMeta): void
@@ -1844,8 +1790,8 @@ class PosPage extends Page
         }
 
         $basePrice = $remark->priceForVision($this->opticalVision);
-        $cylSurcharge = $this->getProgressiveCylinderSurchargeAmount();
-        $price = $basePrice + $cylSurcharge;
+        $diopterAddOn = $this->getOpticalRxDiopterAddOnAmount();
+        $price = $basePrice + $diopterAddOn;
         $visionLabel = $this->opticalVision === 'progressive' ? 'Progressive' : 'Single vision';
 
         $frameMeta = $this->frameMetaForOpticalLine();
@@ -1871,7 +1817,7 @@ class PosPage extends Page
             'lens_name' => $remark->name,
             'remark_id' => $remark->id,
             'base_lens_price' => $basePrice,
-            'progressive_cylinder_surcharge' => $cylSurcharge > 0 ? $cylSurcharge : null,
+            'rx_diopter_add_on' => $diopterAddOn > 0 ? $diopterAddOn : null,
             'lens_type_remarks' => $lensTypeRemarks,
             'od' => [
                 'sph' => $this->od_sph,
@@ -2075,15 +2021,7 @@ class PosPage extends Page
 
     public function isBranchLocked(): bool
     {
-        $user = Auth::user();
-
-        if (! $user?->isBranchRestricted()) {
-            return false;
-        }
-
-        // Lock the selector only when the user has exactly one assigned branch;
-        // with multiple branches they can still pick which one they're working at.
-        return count($user->branchIds()) === 1;
+        return Auth::user()?->isLockedToSingleBranch() ?? false;
     }
 
     protected function getResolvedBranchId(): ?int

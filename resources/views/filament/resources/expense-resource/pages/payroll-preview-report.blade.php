@@ -6,7 +6,7 @@
 @endphp
 
 <div class="space-y-5">
-    @if ($report['salaries_type_missing'] ?? false)
+    @if (($report['salaries_type_missing'] ?? false) || filled($report['error_message'] ?? null))
         <div class="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-500/30 dark:bg-danger-500/10 dark:text-danger-300">
             {{ $report['error_message'] }}
         </div>

@@ -77,6 +77,23 @@ class PayrollExpenseGenerator
             return $this->emptyReport($payDate, salariesTypeMissing: true, errorMessage: 'Expense type “Salaries” is missing. Run ExpenseTypeSeeder or create it.');
         }
 
+        if (! self::isAllowedPayrollPayDate($payDate)) {
+            $suggested = self::suggestedPayrollPayDate($payDate);
+
+            return $this->emptyReport(
+                $payDate,
+                salariesTypeMissing: false,
+                errorMessage: $suggested
+                    ? __('Payroll can only run on the 30th or 31st. Use :date for :month.', [
+                        'date' => $suggested->toFormattedDateString(),
+                        'month' => $payDate->format('F Y'),
+                    ])
+                    : __('Payroll can only run on the 30th or 31st. :month has no valid pay date.', [
+                        'month' => $payDate->format('F Y'),
+                    ]),
+            );
+        }
+
         $lines = $this->getEligibleEmployees($user, $payDate)
             ->map(fn (Employee $employee): array => $this->resolveLine($employee, $payDate, $salariesTypeId, $skipIfAlreadyInMonth, $bankAccountId))
             ->values()
@@ -119,7 +136,7 @@ class PayrollExpenseGenerator
         $user ??= auth()->user();
         $report = $this->preview($payDate, $skipIfAlreadyInMonth, $user, $bankAccountId);
 
-        if ($report['salaries_type_missing']) {
+        if ($report['salaries_type_missing'] || filled($report['error_message'])) {
             return [
                 'created' => 0,
                 'skipped' => 0,
@@ -170,7 +187,7 @@ class PayrollExpenseGenerator
                 }
 
                 $employee = Employee::query()->find($line['employee_id']);
-                if (! $employee) {
+                if (! $employee || $employee->employment_status === Employee::STATUS_TERMINATED) {
                     $skipped++;
 
                     continue;
@@ -215,23 +232,16 @@ class PayrollExpenseGenerator
      */
     protected function getEligibleEmployees(?User $user, Carbon $payDate): EloquentCollection
     {
-        $monthStart = $payDate->copy()->startOfMonth()->toDateString();
         $monthEnd = $payDate->copy()->endOfMonth()->toDateString();
 
         return Employee::query()
             ->with('branch')
             ->where('base_salary', '>', 0)
-            ->where(function ($query) use ($monthStart, $monthEnd): void {
-                $query->whereIn('employment_status', [
-                    Employee::STATUS_ACTIVE,
-                    Employee::STATUS_PROBATION,
-                    Employee::STATUS_ON_LEAVE,
-                ])->orWhere(function ($query) use ($monthStart, $monthEnd): void {
-                    $query->where('employment_status', Employee::STATUS_TERMINATED)
-                        ->whereNotNull('termination_date')
-                        ->whereBetween('termination_date', [$monthStart, $monthEnd]);
-                });
-            })
+            ->whereIn('employment_status', [
+                Employee::STATUS_ACTIVE,
+                Employee::STATUS_PROBATION,
+                Employee::STATUS_ON_LEAVE,
+            ])
             ->where(function ($query) use ($monthEnd): void {
                 $query->whereNull('hire_date')
                     ->orWhereDate('hire_date', '<=', $monthEnd);
@@ -380,7 +390,60 @@ class PayrollExpenseGenerator
             return null;
         }
 
-        return Carbon::parse($lastPaidOn)->addMonthNoOverflow()->startOfDay();
+        return self::nextPayrollPayDateAfter(Carbon::parse($lastPaidOn));
+    }
+
+    public static function isAllowedPayrollPayDate(Carbon $payDate): bool
+    {
+        return in_array($payDate->day, [30, 31], true);
+    }
+
+    public static function suggestedPayrollPayDate(Carbon $payDate): ?Carbon
+    {
+        if ($payDate->daysInMonth >= 31) {
+            return $payDate->copy()->day(31)->startOfDay();
+        }
+
+        if ($payDate->daysInMonth >= 30) {
+            return $payDate->copy()->day(30)->startOfDay();
+        }
+
+        return null;
+    }
+
+    public static function defaultPayDate(): Carbon
+    {
+        $today = now()->startOfDay();
+
+        if (self::isAllowedPayrollPayDate($today)) {
+            return $today;
+        }
+
+        $suggested = self::suggestedPayrollPayDate($today);
+        if ($suggested !== null) {
+            return $suggested;
+        }
+
+        return self::suggestedPayrollPayDate($today->copy()->subMonth())
+            ?? self::suggestedPayrollPayDate($today->copy()->addMonth())
+            ?? $today;
+    }
+
+    public static function nextPayrollPayDateAfter(Carbon $lastPaidOn): Carbon
+    {
+        $cursor = $lastPaidOn->copy()->addMonthNoOverflow()->startOfMonth();
+
+        for ($attempt = 0; $attempt < 12; $attempt++) {
+            $suggested = self::suggestedPayrollPayDate($cursor);
+
+            if ($suggested !== null && $suggested->gt($lastPaidOn)) {
+                return $suggested->startOfDay();
+            }
+
+            $cursor->addMonthNoOverflow();
+        }
+
+        return $lastPaidOn->copy()->addMonthNoOverflow()->day(31)->startOfDay();
     }
 
     /**

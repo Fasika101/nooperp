@@ -105,7 +105,7 @@ class PayrollProrationTest extends TestCase
         ]);
 
         $report = app(PayrollExpenseGenerator::class)->preview(
-            Carbon::parse('2026-03-01'),
+            Carbon::parse('2026-03-31'),
             bankAccountId: $account->id,
         );
 
@@ -129,33 +129,7 @@ class PayrollProrationTest extends TestCase
         $this->assertSame(PayrollExpenseGenerator::STATUS_SKIPPED_EXISTING, $preview['lines'][0]['status']);
     }
 
-    public function test_next_salary_is_due_one_month_after_last_payment(): void
-    {
-        [$generator, $employee, $account] = $this->makePayrollFixtures();
-
-        $generator->generate(Carbon::parse('2026-05-31'), bankAccountId: $account->id);
-
-        $tooEarly = $generator->preview(
-            Carbon::parse('2026-06-15'),
-            bankAccountId: $account->id,
-        );
-
-        $this->assertSame(0, $tooEarly['ready_count']);
-        $this->assertSame(PayrollExpenseGenerator::STATUS_SKIPPED_NOT_DUE_YET, $tooEarly['lines'][0]['status']);
-
-        $dueDate = $generator->preview(
-            Carbon::parse('2026-06-30'),
-            bankAccountId: $account->id,
-        );
-
-        $this->assertSame(1, $dueDate['ready_count']);
-        $this->assertSame(PayrollExpenseGenerator::STATUS_READY, $dueDate['lines'][0]['status']);
-    }
-
-    /**
-     * @return array{0: PayrollExpenseGenerator, 1: Employee, 2: BankAccount}
-     */
-    protected function makePayrollFixtures(): array
+    public function test_payroll_preview_excludes_terminated_employees(): void
     {
         ExpenseType::query()->create([
             'name' => ExpenseType::NAME_SALARIES,
@@ -178,11 +152,112 @@ class PayrollProrationTest extends TestCase
             'is_default' => true,
         ]);
 
-        $employee = $this->makeEmployee([
+        $this->makeEmployee([
+            'branch_id' => $branch->id,
+            'full_name' => 'Active Employee',
+            'hire_date' => '2026-01-01',
+            'base_salary' => 20000,
+            'employment_status' => Employee::STATUS_ACTIVE,
+        ]);
+
+        $this->makeEmployee([
+            'branch_id' => $branch->id,
+            'full_name' => 'Terminated Employee',
+            'hire_date' => '2026-01-01',
+            'termination_date' => '2026-06-15',
+            'base_salary' => 15000,
+            'employment_status' => Employee::STATUS_TERMINATED,
+        ]);
+
+        $report = app(PayrollExpenseGenerator::class)->preview(
+            Carbon::parse('2026-06-30'),
+            bankAccountId: $account->id,
+        );
+
+        $this->assertSame(1, $report['ready_count']);
+        $this->assertSame('Active Employee', $report['lines'][0]['full_name']);
+    }
+
+    public function test_payroll_requires_pay_date_on_30th_or_31st(): void
+    {
+        ExpenseType::query()->create([
+            'name' => ExpenseType::NAME_SALARIES,
+            'is_active' => true,
+        ]);
+
+        $report = app(PayrollExpenseGenerator::class)->preview(
+            Carbon::parse('2026-06-15'),
+        );
+
+        $this->assertSame(0, $report['ready_count']);
+        $this->assertNotNull($report['error_message']);
+        $this->assertTrue(PayrollExpenseGenerator::isAllowedPayrollPayDate(Carbon::parse('2026-06-30')));
+        $this->assertTrue(PayrollExpenseGenerator::isAllowedPayrollPayDate(Carbon::parse('2026-05-31')));
+        $this->assertFalse(PayrollExpenseGenerator::isAllowedPayrollPayDate(Carbon::parse('2026-06-15')));
+        $this->assertFalse(PayrollExpenseGenerator::isAllowedPayrollPayDate(Carbon::parse('2026-02-28')));
+
+        $februaryReport = app(PayrollExpenseGenerator::class)->preview(
+            Carbon::parse('2026-02-28'),
+        );
+
+        $this->assertSame(0, $februaryReport['ready_count']);
+        $this->assertNotNull($februaryReport['error_message']);
+    }
+
+    public function test_next_salary_is_due_one_month_after_last_payment(): void
+    {
+        [$generator, $employee, $account] = $this->makePayrollFixtures();
+
+        $generator->generate(Carbon::parse('2026-05-31'), bankAccountId: $account->id);
+
+        $invalidDate = $generator->preview(
+            Carbon::parse('2026-06-15'),
+            bankAccountId: $account->id,
+        );
+
+        $this->assertSame(0, $invalidDate['ready_count']);
+        $this->assertNotNull($invalidDate['error_message']);
+
+        $dueDate = $generator->preview(
+            Carbon::parse('2026-06-30'),
+            bankAccountId: $account->id,
+        );
+
+        $this->assertSame(1, $dueDate['ready_count']);
+        $this->assertSame(PayrollExpenseGenerator::STATUS_READY, $dueDate['lines'][0]['status']);
+    }
+
+    /**
+     * @return array{0: PayrollExpenseGenerator, 1: Employee, 2: BankAccount}
+     */
+    protected function makePayrollFixtures(array $employeeOverrides = []): array
+    {
+        ExpenseType::query()->create([
+            'name' => ExpenseType::NAME_SALARIES,
+            'is_active' => true,
+        ]);
+
+        $branch = Branch::query()->create([
+            'name' => 'Payroll Branch',
+            'code' => 'payroll-branch',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $account = BankAccount::query()->create([
+            'name' => 'Cash',
+            'branch_id' => $branch->id,
+            'currency' => 'ETB',
+            'opening_balance' => 50000,
+            'current_balance' => 50000,
+            'is_default' => true,
+        ]);
+
+        $employee = $this->makeEmployee(array_merge([
             'branch_id' => $branch->id,
             'hire_date' => '2026-01-01',
             'base_salary' => 20000,
-        ]);
+        ], $employeeOverrides));
 
         return [app(PayrollExpenseGenerator::class), $employee, $account];
     }

@@ -51,6 +51,7 @@ class BranchAssignedUserAccessTest extends TestCase
         $user = User::factory()->create([
             'branch_id' => $assignedBranch->id,
         ]);
+        $user->branches()->attach($assignedBranch->id);
 
         $this->actingAs($user);
 
@@ -150,6 +151,7 @@ class BranchAssignedUserAccessTest extends TestCase
         $user = User::factory()->create([
             'branch_id' => $branchA->id,
         ]);
+        $user->branches()->attach($branchA->id);
 
         $this->actingAs($user);
 
@@ -344,5 +346,28 @@ class BranchAssignedUserAccessTest extends TestCase
         ]);
 
         return [$branchA, $branchB];
+    }
+
+    public function test_multi_branch_user_is_not_locked_to_single_branch(): void
+    {
+        [$branchA, $branchB] = $this->createBranches();
+
+        $user = User::factory()->create();
+        $user->branches()->attach([$branchA->id, $branchB->id]);
+
+        $this->actingAs($user);
+
+        $this->assertTrue($user->isBranchRestricted());
+        $this->assertFalse($user->isLockedToSingleBranch());
+        $this->assertEqualsCanonicalizing([$branchA->id, $branchB->id], $user->branchIds());
+
+        $page = app(PosPage::class);
+        $page->mount();
+
+        $this->assertFalse($page->isBranchLocked());
+        $this->assertEqualsCanonicalizing(
+            [$branchA->id, $branchB->id],
+            $page->getBranches()->pluck('id')->all(),
+        );
     }
 }

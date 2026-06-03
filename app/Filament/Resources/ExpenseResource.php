@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\ConfiguresBranchSelect;
 use App\Filament\Resources\ExpenseResource\Pages;
 use App\Models\Affiliate;
 use App\Models\BankAccount;
@@ -32,6 +33,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ExpenseResource extends Resource
 {
+    use ConfiguresBranchSelect;
+
     protected static ?string $model = Expense::class;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-banknotes';
@@ -48,13 +51,13 @@ class ExpenseResource extends Resource
             ->components([
                 Select::make('branch_id')
                     ->label('Branch')
-                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
+                    ->relationship('branch', 'name', static::branchRelationshipQuery())
                     ->required()
                     ->searchable()
                     ->preload()
                     ->live()
-                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn () => auth()->user()?->isBranchRestricted() ?? false)
+                    ->default(fn () => static::defaultBranchIdForSelect())
+                    ->disabled(fn () => static::isBranchSelectLocked())
                     ->dehydrated(),
                 DatePicker::make('date')
                     ->required()

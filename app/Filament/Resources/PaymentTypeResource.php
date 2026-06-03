@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\ConfiguresBranchSelect;
 use App\Filament\Resources\PaymentTypeResource\Pages;
 use App\Models\BankAccount;
-use App\Models\Branch;
 use App\Models\PaymentType;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class PaymentTypeResource extends Resource
 {
+    use ConfiguresBranchSelect;
+
     protected static ?string $model = PaymentType::class;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-credit-card';
@@ -53,17 +55,15 @@ class PaymentTypeResource extends Resource
                     ->relationship(
                         'branches',
                         'name',
-                        fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'),
+                        static::branchRelationshipQuery(),
                     )
                     ->required(fn (Get $get): bool => ! ($get('is_global') ?? false))
                     ->visible(fn (Get $get): bool => ! ($get('is_global') ?? false))
                     ->searchable()
                     ->preload()
                     ->live()
-                    ->default(fn () => auth()->user()?->branch_id
-                        ? [auth()->user()->primaryBranchId() ?? auth()->user()->branch_id]
-                        : (Branch::getDefaultBranch()?->id ? [Branch::getDefaultBranch()->id] : []))
-                    ->disabled(fn (): bool => auth()->user()?->isBranchRestricted() ?? false)
+                    ->default(fn () => static::defaultBranchesForMultiSelect())
+                    ->disabled(fn () => static::isBranchSelectLocked())
                     ->dehydrated(),
                 Toggle::make('is_accounts_receivable')
                     ->label('On account (no bank deposit)')

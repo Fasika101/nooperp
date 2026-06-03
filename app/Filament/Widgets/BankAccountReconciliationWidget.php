@@ -2,6 +2,8 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Widgets\Concerns\ChecksPageRoute;
+use App\Filament\Widgets\Concerns\ChecksShieldWidgetPermission;
 use App\Models\BankAccount;
 use App\Models\Setting;
 use BezhanSalleh\FilamentShield\Traits\HasWidgetShield;
@@ -11,23 +13,18 @@ use Illuminate\Support\Number;
 
 class BankAccountReconciliationWidget extends BaseWidget
 {
+    use ChecksPageRoute;
+    use ChecksShieldWidgetPermission;
     use HasWidgetShield;
 
     protected static ?int $sort = 0;
 
-    protected int | array | null $columns = 1;
+    protected int|array|null $columns = 1;
 
     public static function canView(): bool
     {
-        return static::hasWidgetPermission() && request()->routeIs('filament.admin.pages.dashboard');
-    }
-
-    protected static function hasWidgetPermission(): bool
-    {
-        $permission = static::getWidgetPermission();
-        $user = \Filament\Facades\Filament::auth()?->user();
-
-        return $permission && $user ? $user->can($permission) : true;
+        return static::hasWidgetPermission()
+            && static::isOnFilamentPageRoute('filament.admin.pages.dashboard');
     }
 
     protected function getStats(): array

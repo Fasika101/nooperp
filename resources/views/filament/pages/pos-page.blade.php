@@ -437,9 +437,9 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                 <p class="pos-optical-notice">Prescription notice: use &quot;—&quot; in dropdowns where a value is unknown. Complete OD / OS and PD before adding to cart.</p>
                                 @if($opticalVision === 'progressive')
                                     <p class="pos-optical-notice">Progressive: confirm medium (M) or large (L) frame where required.</p>
-                                    @if(\App\Models\Setting::getOpticalProgressiveCylinderSurcharge() > 0)
-                                        <p class="pos-optical-notice">When either OD or OS cylinder is not 0.00, {{ \Illuminate\Support\Number::currency(\App\Models\Setting::getOpticalProgressiveCylinderSurcharge(), $this->getDefaultCurrency()) }} is added to the lens package price below.</p>
-                                    @endif
+                                @endif
+                                @if($this->getOpticalRxDiopterAddOnAmount() > 0)
+                                    <p class="pos-optical-notice">SPH/CYL add-on for current prescription: {{ \Illuminate\Support\Number::currency($this->getOpticalRxDiopterAddOnAmount(), $this->getDefaultCurrency()) }} (per eye, from Settings).</p>
                                 @endif
 
                                 <div class="pos-opt-section">
@@ -507,17 +507,17 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 
                                 <div class="pos-opt-section">
                                     <h4>Lens package &amp; price</h4>
-                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Select one priced option (required).@if($opticalVision === 'progressive' && $this->getProgressiveCylinderSurchargeAmount() > 0) Totals include the progressive cylinder add-on.@endif</p>
+                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Select one priced option (required).@if($this->getOpticalRxDiopterAddOnAmount() > 0) Totals include the SPH/CYL add-on for your prescription.@endif</p>
                                     <div class="pos-remark-grid">
                                         @foreach($this->getOpticalPrescriptionRemarks() as $remark)
                                             @php
                                                 $rPrice = $opticalVision === 'progressive' ? $remark->price_progressive : $remark->price_single_vision;
-                                                $cylSur = $this->getProgressiveCylinderSurchargeAmount();
-                                                $lineTotal = $rPrice + $cylSur;
+                                                $rxAddOn = $this->getOpticalRxDiopterAddOnAmount();
+                                                $lineTotal = $rPrice + $rxAddOn;
                                             @endphp
                                             <label class="pos-remark-item {{ (int) $opticalRemarkId === (int) $remark->id ? 'selected' : '' }}">
                                                 <input type="radio" wire:model.live="opticalRemarkId" value="{{ $remark->id }}" style="accent-color: var(--primary-600);" />
-                                                <span><strong>{{ $remark->name }}</strong> — {{ \Illuminate\Support\Number::currency($lineTotal, $this->getDefaultCurrency()) }}@if($cylSur > 0) <span style="font-size: 0.75rem; color: rgb(107 114 128);">(incl. {{ \Illuminate\Support\Number::currency($cylSur, $this->getDefaultCurrency()) }} cyl)</span>@endif</span>
+                                                <span><strong>{{ $remark->name }}</strong> — {{ \Illuminate\Support\Number::currency($lineTotal, $this->getDefaultCurrency()) }}@if($rxAddOn > 0) <span style="font-size: 0.75rem; color: rgb(107 114 128);">(incl. {{ \Illuminate\Support\Number::currency($rxAddOn, $this->getDefaultCurrency()) }} SPH/CYL)</span>@endif</span>
                                             </label>
                                         @endforeach
                                     </div>

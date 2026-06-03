@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Widgets\Concerns\ChecksPageRoute;
 use App\Filament\Widgets\Concerns\ChecksShieldWidgetPermission;
 use App\Models\Expense;
 use App\Models\ExpenseType;
@@ -15,6 +16,7 @@ use Illuminate\Support\Number;
 
 class FinanceStatsWidget extends BaseWidget
 {
+    use ChecksPageRoute;
     use ChecksShieldWidgetPermission;
     use HasWidgetShield;
 
@@ -25,7 +27,7 @@ class FinanceStatsWidget extends BaseWidget
     public static function canView(): bool
     {
         return static::hasWidgetPermission()
-            && request()->routeIs('filament.admin.pages.finance-page');
+            && static::isOnFilamentPageRoute('filament.admin.pages.finance-page');
     }
 
     protected function getStats(): array

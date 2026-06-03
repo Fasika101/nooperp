@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\BankAccountResource\RelationManagers;
 
+use App\Filament\Concerns\ConfiguresBranchSelect;
 use App\Models\BankTransaction;
-use App\Models\Branch;
 use App\Models\Setting;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -19,6 +19,8 @@ use Filament\Tables\Table;
 
 class TransactionsRelationManager extends RelationManager
 {
+    use ConfiguresBranchSelect;
+
     protected static string $relationship = 'transactions';
 
     protected static ?string $title = 'Transactions';
@@ -31,12 +33,12 @@ class TransactionsRelationManager extends RelationManager
             ->components([
                 Select::make('branch_id')
                     ->label('Branch')
-                    ->relationship('branch', 'name', fn ($query) => $query->where('is_active', true)->orderByDesc('is_default')->orderBy('name'))
+                    ->relationship('branch', 'name', static::branchRelationshipQuery())
                     ->required()
                     ->searchable()
                     ->preload()
-                    ->default(fn () => auth()->user()?->branch_id ?: Branch::getDefaultBranch()?->id)
-                    ->disabled(fn (): bool => auth()->user()?->isBranchRestricted() ?? false)
+                    ->default(fn () => static::defaultBranchIdForSelect())
+                    ->disabled(fn () => static::isBranchSelectLocked())
                     ->dehydrated(),
                 DatePicker::make('date')
                     ->required()
