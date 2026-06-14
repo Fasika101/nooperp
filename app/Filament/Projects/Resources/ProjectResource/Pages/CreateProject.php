@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Filament\Resources\ProjectResource\Pages;
+namespace App\Filament\Projects\Resources\ProjectResource\Pages;
 
-use App\Filament\Resources\ProjectResource;
+use App\Filament\Projects\Resources\ProjectResource;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateProject extends CreateRecord

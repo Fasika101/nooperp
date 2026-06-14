@@ -19,6 +19,10 @@ use App\Models\OrderItem;
 use App\Models\PaymentType;
 use App\Models\Product;
 use App\Models\Project;
+use App\Models\ProjectBug;
+use App\Models\ProjectComment;
+use App\Models\ProjectFile;
+use App\Models\ProjectMilestone;
 use App\Models\ProjectTaskStage;
 use App\Models\StockPurchase;
 use App\Models\TaxType;
@@ -124,6 +128,11 @@ final class DataWipeService
         CrmLeadTask::query()->delete();
         CrmDeal::query()->delete();
         CrmLead::query()->delete();
+        // Phase 3 tables cascade from Project, but explicit for clarity
+        ProjectBug::query()->delete();
+        ProjectComment::query()->delete();
+        ProjectFile::query()->delete();
+        ProjectMilestone::query()->delete();
         Project::query()->delete();
         CrmLeadStage::query()->delete();
         CrmDealStage::query()->delete();

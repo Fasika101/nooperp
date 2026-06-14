@@ -59,6 +59,26 @@ class Project extends Model
         return $this->hasMany(ProjectTask::class);
     }
 
+    public function milestones(): HasMany
+    {
+        return $this->hasMany(ProjectMilestone::class);
+    }
+
+    public function files(): HasMany
+    {
+        return $this->hasMany(ProjectFile::class);
+    }
+
+    public function comments(): HasMany
+    {
+        return $this->hasMany(ProjectComment::class);
+    }
+
+    public function bugs(): HasMany
+    {
+        return $this->hasMany(ProjectBug::class);
+    }
+
     public function deals(): HasMany
     {
         return $this->hasMany(CrmDeal::class);

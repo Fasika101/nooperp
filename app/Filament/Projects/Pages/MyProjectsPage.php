@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Filament\Pages;
+namespace App\Filament\Projects\Pages;
 
-use App\Filament\Resources\ProjectResource;
+use App\Filament\Projects\Resources\ProjectResource;
 use App\Models\Project;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Pages\Page;
@@ -21,13 +21,13 @@ class MyProjectsPage extends Page implements HasTable
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-rectangle-stack';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Projects';
+    protected static string|\UnitEnum|null $navigationGroup = 'My Work';
 
-    protected static ?string $navigationLabel = 'My projects';
+    protected static ?string $navigationLabel = 'My Projects';
 
-    protected static ?string $title = 'My projects';
+    protected static ?string $title = 'My Projects';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 10;
 
     public function mount(): void
     {
@@ -55,6 +55,17 @@ class MyProjectsPage extends Page implements HasTable
                     ->url(fn (Project $record): string => ProjectResource::getUrl('edit', ['record' => $record])),
                 TextColumn::make('status')->badge(),
                 TextColumn::make('customer.name')->placeholder('—'),
+                TextColumn::make('end_date')
+                    ->label('Deadline')
+                    ->date()
+                    ->placeholder('No deadline')
+                    ->color(fn (Project $record): string => match (true) {
+                        $record->end_date === null => 'gray',
+                        in_array($record->status, [Project::STATUS_COMPLETED, Project::STATUS_CANCELLED]) => 'gray',
+                        $record->end_date->isPast() => 'danger',
+                        $record->end_date->lte(now()->addDays(7)) => 'warning',
+                        default => 'success',
+                    }),
                 TextColumn::make('role')
                     ->label('Your role')
                     ->getStateUsing(function (Project $record): string {

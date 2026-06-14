@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\ProjectResource\RelationManagers;
+namespace App\Filament\Projects\Resources\ProjectResource\RelationManagers;
 
 use App\Models\ProjectTask;
 use App\Models\User;
@@ -59,7 +59,15 @@ class ProjectTasksRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('title')->searchable(),
                 Tables\Columns\TextColumn::make('stage.name')->badge(),
                 Tables\Columns\TextColumn::make('priority')->badge(),
-                Tables\Columns\TextColumn::make('due_date')->date()->placeholder('—'),
+                Tables\Columns\TextColumn::make('due_date')
+                    ->date()
+                    ->placeholder('—')
+                    ->color(fn (ProjectTask $record): string => match (true) {
+                        $record->due_date === null => 'gray',
+                        $record->due_date->isPast() => 'danger',
+                        $record->due_date->lte(now()->addDays(3)) => 'warning',
+                        default => 'success',
+                    }),
                 Tables\Columns\TextColumn::make('assignees.name')
                     ->label('Assignees')
                     ->badge()

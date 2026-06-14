@@ -1,9 +1,13 @@
 <?php
 
-namespace App\Filament\Resources;
+namespace App\Filament\Projects\Resources;
 
-use App\Filament\Resources\ProjectResource\Pages;
-use App\Filament\Resources\ProjectResource\RelationManagers\ProjectTasksRelationManager;
+use App\Filament\Projects\Resources\ProjectResource\Pages;
+use App\Filament\Projects\Resources\ProjectResource\RelationManagers\ProjectBugsRelationManager;
+use App\Filament\Projects\Resources\ProjectResource\RelationManagers\ProjectCommentsRelationManager;
+use App\Filament\Projects\Resources\ProjectResource\RelationManagers\ProjectFilesRelationManager;
+use App\Filament\Projects\Resources\ProjectResource\RelationManagers\ProjectMilestonesRelationManager;
+use App\Filament\Projects\Resources\ProjectResource\RelationManagers\ProjectTasksRelationManager;
 use App\Models\Project;
 use App\Models\User;
 use Filament\Actions\BulkActionGroup;
@@ -24,11 +28,11 @@ class ProjectResource extends Resource
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-folder';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Projects';
+    protected static string|\UnitEnum|null $navigationGroup = 'Management';
 
-    protected static ?string $navigationLabel = 'Projects';
+    protected static ?string $navigationLabel = 'All Projects';
 
-    protected static ?int $navigationSort = 0;
+    protected static ?int $navigationSort = 30;
 
     public static function form(Schema $schema): Schema
     {
@@ -55,7 +59,8 @@ class ProjectResource extends Resource
                     ->required()
                     ->default(Project::STATUS_ACTIVE),
                 DatePicker::make('start_date'),
-                DatePicker::make('end_date'),
+                DatePicker::make('end_date')
+                    ->helperText('Deadline date used for the countdown timer and due alerts.'),
                 Select::make('member_ids')
                     ->label('Team members')
                     ->multiple()
@@ -75,7 +80,17 @@ class ProjectResource extends Resource
                 Tables\Columns\TextColumn::make('status')->badge(),
                 Tables\Columns\TextColumn::make('creator.name')->label('Created by')->placeholder('—'),
                 Tables\Columns\TextColumn::make('start_date')->date()->placeholder('—'),
-                Tables\Columns\TextColumn::make('end_date')->date()->placeholder('—'),
+                Tables\Columns\TextColumn::make('end_date')
+                    ->label('Deadline')
+                    ->date()
+                    ->placeholder('—')
+                    ->color(fn (Project $record): string => match (true) {
+                        $record->end_date === null => 'gray',
+                        in_array($record->status, [Project::STATUS_COMPLETED, Project::STATUS_CANCELLED]) => 'gray',
+                        $record->end_date->isPast() => 'danger',
+                        $record->end_date->lte(now()->addDays(7)) => 'warning',
+                        default => 'success',
+                    }),
                 Tables\Columns\TextColumn::make('updated_at')->dateTime()->sortable(),
             ])
             ->defaultSort('updated_at', 'desc')
@@ -91,6 +106,10 @@ class ProjectResource extends Resource
     {
         return [
             ProjectTasksRelationManager::class,
+            ProjectMilestonesRelationManager::class,
+            ProjectBugsRelationManager::class,
+            ProjectFilesRelationManager::class,
+            ProjectCommentsRelationManager::class,
         ];
     }
 

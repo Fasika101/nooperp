@@ -19,13 +19,13 @@ class ProjectTaskStageResource extends Resource
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-queue-list';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Projects';
+    protected static string|\UnitEnum|null $navigationGroup = 'Settings';
 
-    protected static ?string $navigationLabel = 'Task stages';
+    protected static ?string $navigationLabel = 'Project Task Stages';
 
     protected static ?string $modelLabel = 'Task stage';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 12;
 
     public static function form(Schema $schema): Schema
     {
@@ -37,7 +37,8 @@ class ProjectTaskStageResource extends Resource
                 TextInput::make('position')
                     ->numeric()
                     ->default(0)
-                    ->required(),
+                    ->required()
+                    ->helperText('Lower numbers appear first in task stage lists.'),
             ]);
     }
 

@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Filament\Pages;
+namespace App\Filament\Projects\Pages;
 
-use App\Filament\Resources\ProjectResource;
+use App\Filament\Projects\Resources\ProjectResource;
 use App\Models\ProjectTask;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Pages\Page;
@@ -21,13 +21,13 @@ class MyTasksPage extends Page implements HasTable
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-list';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Projects';
+    protected static string|\UnitEnum|null $navigationGroup = 'My Work';
 
-    protected static ?string $navigationLabel = 'My tasks';
+    protected static ?string $navigationLabel = 'My Tasks';
 
-    protected static ?string $title = 'My tasks';
+    protected static ?string $title = 'My Tasks';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 20;
 
     public function mount(): void
     {
@@ -55,7 +55,16 @@ class MyTasksPage extends Page implements HasTable
                 TextColumn::make('project.name')->label('Project')->sortable(),
                 TextColumn::make('stage.name')->badge(),
                 TextColumn::make('priority')->badge(),
-                TextColumn::make('due_date')->date()->placeholder('—')->sortable(),
+                TextColumn::make('due_date')
+                    ->date()
+                    ->placeholder('—')
+                    ->sortable()
+                    ->color(fn (ProjectTask $record): string => match (true) {
+                        $record->due_date === null => 'gray',
+                        $record->due_date->isPast() => 'danger',
+                        $record->due_date->lte(now()->addDays(3)) => 'warning',
+                        default => 'success',
+                    }),
                 TextColumn::make('visibility')
                     ->label('Why listed')
                     ->getStateUsing(function (ProjectTask $record): string {

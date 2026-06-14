@@ -9,6 +9,7 @@ use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -47,11 +48,19 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make()
                     ->label('HR'),
                 NavigationGroup::make()
-                    ->label('Projects'),
+                    ->label('Workspaces'),
                 NavigationGroup::make()
                     ->label('Settings'),
                 NavigationGroup::make()
                     ->label('Filament Shield'),
+            ])
+            ->navigationItems([
+                NavigationItem::make('Projects Workspace')
+                    ->url('/projects')
+                    ->icon('heroicon-o-folder-open')
+                    ->group('Workspaces')
+                    ->sort(0)
+                    ->badge('↗'),
             ])
             ->colors([
                 'primary' => Color::Blue,
@@ -74,6 +83,7 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
+            ->databaseNotifications()
             ->plugins([
                 FilamentShieldPlugin::make(),
             ])
