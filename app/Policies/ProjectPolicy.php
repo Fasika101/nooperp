@@ -4,76 +4,67 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use App\Models\Project;
 use Illuminate\Foundation\Auth\User as AuthUser;
+use App\Models\Project;
+use Illuminate\Auth\Access\HandlesAuthorization;
 
 class ProjectPolicy
 {
-    /** Any authenticated user may browse the projects list (query is scoped separately). */
-    public function viewAny(AuthUser $user): bool
+    use HandlesAuthorization;
+    
+    public function viewAny(AuthUser $authUser): bool
     {
-        return true;
+        return $authUser->can('ViewAny:Project');
     }
 
-    /** Any authenticated user may view a project they can see in the list. */
-    public function view(AuthUser $user, Project $project): bool
+    public function view(AuthUser $authUser, Project $project): bool
     {
-        return true;
+        return $authUser->can('View:Project');
     }
 
-    /** Any authenticated user may create a project. */
-    public function create(AuthUser $user): bool
+    public function create(AuthUser $authUser): bool
     {
-        return true;
+        return $authUser->can('Create:Project');
     }
 
-    /** Only the project creator or super_admin may edit settings. */
-    public function update(AuthUser $user, Project $project): bool
+    public function update(AuthUser $authUser, Project $project): bool
     {
-        if ($user->hasRole('super_admin')) {
-            return true;
-        }
-
-        return (int) $project->created_by === (int) $user->id;
+        return $authUser->can('Update:Project');
     }
 
-    /** Only the project creator or super_admin may delete a project. */
-    public function delete(AuthUser $user, Project $project): bool
+    public function delete(AuthUser $authUser, Project $project): bool
     {
-        if ($user->hasRole('super_admin')) {
-            return true;
-        }
-
-        return (int) $project->created_by === (int) $user->id;
+        return $authUser->can('Delete:Project');
     }
 
-    public function restore(AuthUser $user, Project $project): bool
+    public function restore(AuthUser $authUser, Project $project): bool
     {
-        return $user->hasRole('super_admin');
+        return $authUser->can('Restore:Project');
     }
 
-    public function forceDelete(AuthUser $user, Project $project): bool
+    public function forceDelete(AuthUser $authUser, Project $project): bool
     {
-        return $user->hasRole('super_admin');
+        return $authUser->can('ForceDelete:Project');
     }
 
-    public function forceDeleteAny(AuthUser $user): bool
+    public function forceDeleteAny(AuthUser $authUser): bool
     {
-        return $user->hasRole('super_admin');
+        return $authUser->can('ForceDeleteAny:Project');
     }
 
-    public function restoreAny(AuthUser $user): bool
+    public function restoreAny(AuthUser $authUser): bool
     {
-        return $user->hasRole('super_admin');
+        return $authUser->can('RestoreAny:Project');
     }
 
-    public function replicate(AuthUser $user, Project $project): bool
+    public function replicate(AuthUser $authUser, Project $project): bool
     {
-        return true;
+        return $authUser->can('Replicate:Project');
     }
 
-    public function reorder(AuthUser $user): bool
+    public function reorder(AuthUser $authUser): bool
     {
-        return $user->hasRole('super_admin');
+        return $authUser->can('Reorder:Project');
     }
+
 }
