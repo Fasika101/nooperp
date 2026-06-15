@@ -27,3 +27,5 @@ Financial
 
 php artisan shield:generate --all
 Policies & Permissions
+
+ALTER TABLE projects ENGINE=InnoDB;

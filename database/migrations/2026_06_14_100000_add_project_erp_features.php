@@ -10,70 +10,90 @@ return new class extends Migration
     {
         // --- project_tasks: progress, estimated_hours, is_starred ---
         Schema::table('project_tasks', function (Blueprint $table) {
-            $table->unsignedTinyInteger('progress')->default(0)->after('due_date');
-            $table->decimal('estimated_hours', 6, 2)->nullable()->after('progress');
-            $table->boolean('is_starred')->default(false)->after('estimated_hours');
+            if (! Schema::hasColumn('project_tasks', 'progress')) {
+                $table->unsignedTinyInteger('progress')->default(0)->after('due_date');
+            }
+            if (! Schema::hasColumn('project_tasks', 'estimated_hours')) {
+                $table->decimal('estimated_hours', 6, 2)->nullable()->after('progress');
+            }
+            if (! Schema::hasColumn('project_tasks', 'is_starred')) {
+                $table->boolean('is_starred')->default(false)->after('estimated_hours');
+            }
         });
 
         // --- projects: budget ---
         Schema::table('projects', function (Blueprint $table) {
-            $table->decimal('budget', 12, 2)->nullable()->after('end_date');
+            if (! Schema::hasColumn('projects', 'budget')) {
+                $table->decimal('budget', 12, 2)->nullable()->after('end_date');
+            }
         });
 
         // --- expenses: project_id ---
         Schema::table('expenses', function (Blueprint $table) {
-            $table->foreignId('project_id')->nullable()->after('description')
-                ->constrained('projects')->nullOnDelete();
+            if (! Schema::hasColumn('expenses', 'project_id')) {
+                $table->foreignId('project_id')->nullable()->after('description')
+                    ->constrained('projects')->nullOnDelete();
+            }
         });
 
         // --- project_labels ---
-        Schema::create('project_labels', function (Blueprint $table) {
-            $table->id();
-            $table->string('name', 80);
-            $table->string('color', 20)->default('gray'); // tailwind color name: blue, green, red, yellow, purple, etc.
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('project_labels')) {
+            Schema::create('project_labels', function (Blueprint $table) {
+                $table->id();
+                $table->string('name', 80);
+                $table->string('color', 20)->default('gray');
+                $table->timestamps();
+            });
+        }
 
         // --- project_label_task pivot ---
-        Schema::create('project_label_task', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('project_label_id')->constrained('project_labels')->cascadeOnDelete();
-            $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
-            $table->timestamps();
+        if (! Schema::hasTable('project_label_task')) {
+            Schema::create('project_label_task', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('project_label_id')->constrained('project_labels')->cascadeOnDelete();
+                $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
+                $table->timestamps();
 
-            $table->unique(['project_label_id', 'project_task_id']);
-        });
+                $table->unique(['project_label_id', 'project_task_id']);
+            });
+        }
 
         // --- project_task_comments ---
-        Schema::create('project_task_comments', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
-            $table->text('body');
-            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('project_task_comments')) {
+            Schema::create('project_task_comments', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
+                $table->text('body');
+                $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+                $table->timestamps();
+            });
+        }
 
         // --- project_task_checklists ---
-        Schema::create('project_task_checklists', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
-            $table->string('title');
-            $table->boolean('is_done')->default(false);
-            $table->unsignedSmallInteger('position')->default(0);
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('project_task_checklists')) {
+            Schema::create('project_task_checklists', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
+                $table->string('title');
+                $table->boolean('is_done')->default(false);
+                $table->unsignedSmallInteger('position')->default(0);
+                $table->timestamps();
+            });
+        }
 
         // --- project_time_logs ---
-        Schema::create('project_time_logs', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
-            $table->foreignId('project_id')->constrained('projects')->cascadeOnDelete();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->decimal('hours', 6, 2);
-            $table->date('logged_on');
-            $table->string('note', 512)->nullable();
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('project_time_logs')) {
+            Schema::create('project_time_logs', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('project_task_id')->constrained('project_tasks')->cascadeOnDelete();
+                $table->foreignId('project_id')->constrained('projects')->cascadeOnDelete();
+                $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+                $table->decimal('hours', 6, 2);
+                $table->date('logged_on');
+                $table->string('note', 512)->nullable();
+                $table->timestamps();
+            });
+        }
     }
 
     public function down(): void
@@ -84,17 +104,27 @@ return new class extends Migration
         Schema::dropIfExists('project_label_task');
         Schema::dropIfExists('project_labels');
 
-        Schema::table('expenses', function (Blueprint $table) {
-            $table->dropForeign(['project_id']);
-            $table->dropColumn('project_id');
-        });
+        if (Schema::hasColumn('expenses', 'project_id')) {
+            Schema::table('expenses', function (Blueprint $table) {
+                $table->dropForeign(['project_id']);
+                $table->dropColumn('project_id');
+            });
+        }
 
-        Schema::table('projects', function (Blueprint $table) {
-            $table->dropColumn('budget');
-        });
+        if (Schema::hasColumn('projects', 'budget')) {
+            Schema::table('projects', function (Blueprint $table) {
+                $table->dropColumn('budget');
+            });
+        }
 
         Schema::table('project_tasks', function (Blueprint $table) {
-            $table->dropColumn(['progress', 'estimated_hours', 'is_starred']);
+            $cols = array_filter(
+                ['progress', 'estimated_hours', 'is_starred'],
+                fn ($c) => Schema::hasColumn('project_tasks', $c)
+            );
+            if ($cols) {
+                $table->dropColumn(array_values($cols));
+            }
         });
     }
 };
