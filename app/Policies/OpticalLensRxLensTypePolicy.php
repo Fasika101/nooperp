@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
+use Illuminate\Foundation\Auth\User as AuthUser;
 use App\Models\OpticalLensRxLensType;
 use Illuminate\Auth\Access\HandlesAuthorization;
-use Illuminate\Foundation\Auth\User as AuthUser;
 
 class OpticalLensRxLensTypePolicy
 {
     use HandlesAuthorization;
-
+    
     public function viewAny(AuthUser $authUser): bool
     {
         return $authUser->can('ViewAny:OpticalLensRxLensType');
@@ -66,4 +66,5 @@ class OpticalLensRxLensTypePolicy
     {
         return $authUser->can('Reorder:OpticalLensRxLensType');
     }
+
 }

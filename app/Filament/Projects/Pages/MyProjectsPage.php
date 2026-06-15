@@ -5,6 +5,7 @@ namespace App\Filament\Projects\Pages;
 use App\Filament\Projects\Resources\ProjectResource;
 use App\Models\Project;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Actions\Action;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\EmbeddedTable;
 use Filament\Schemas\Schema;
@@ -33,6 +34,17 @@ class MyProjectsPage extends Page implements HasTable
     {
         $this->bootedInteractsWithTable();
         $this->mountInteractsWithTable();
+    }
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('create_project')
+                ->label('New Project')
+                ->icon('heroicon-o-plus')
+                ->color('primary')
+                ->url(ProjectResource::getUrl('create')),
+        ];
     }
 
     public function content(Schema $schema): Schema

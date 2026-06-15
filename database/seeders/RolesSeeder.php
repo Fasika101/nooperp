@@ -30,6 +30,7 @@ class RolesSeeder extends Seeder
         $this->syncSuperAdminRole($guard);
         $this->syncPanelUserRole($guard);
         $this->syncManagerRole($guard);
+        $this->syncProjectsRole($guard);
 
         $this->syncRole('sales', $this->salesPermissionNames(), $guard);
         $this->syncRole('inventory', $this->inventoryPermissionNames(), $guard);
@@ -41,18 +42,50 @@ class RolesSeeder extends Seeder
 
     protected function generateShieldPermissions(): void
     {
-        $exitCode = Artisan::call('shield:generate', [
-            '--all' => true,
-            '--panel' => 'admin',
-            '--option' => 'permissions',
-            '--no-interaction' => true,
-        ]);
+        foreach (['admin', 'projects'] as $panel) {
+            $exitCode = Artisan::call('shield:generate', [
+                '--all'            => true,
+                '--panel'          => $panel,
+                '--option'         => 'permissions',
+                '--no-interaction' => true,
+            ]);
 
-        if ($exitCode !== 0) {
-            $this->command->warn('shield:generate returned a non-zero exit code. Check permissions manually.');
-        } else {
-            $this->command->info(Artisan::output());
+            if ($exitCode !== 0) {
+                $this->command->warn("shield:generate [{$panel}] returned a non-zero exit code. Check permissions manually.");
+            } else {
+                $this->command->info(Artisan::output());
+            }
         }
+    }
+
+    /**
+     * Full access to the Projects panel — all pages, resources, and widgets.
+     * Project-level edit/delete is still gated by creator ownership in the policy.
+     */
+    protected function syncProjectsRole(string $guard): void
+    {
+        $role = Role::query()->firstOrCreate(
+            ['name' => User::ROLE_PROJECTS, 'guard_name' => $guard],
+        );
+
+        // Grab every permission whose name contains a projects-panel resource/page
+        $keywords = [
+            'Project', 'CalendarEvent', 'ProjectTask',
+            'MyProjectsPage', 'MyTasksPage', 'ProjectsDashboardPage',
+            'ProjectKanbanPage', 'ProjectCalendarPage',
+        ];
+
+        $permissions = Permission::query()
+            ->where(function ($q) use ($keywords) {
+                foreach ($keywords as $kw) {
+                    $q->orWhere('name', 'like', "%:{$kw}%");
+                }
+            })
+            ->get();
+
+        $role->syncPermissions($permissions);
+
+        $this->command->info('Role [projects] synced ('.$permissions->count().' permissions).');
     }
 
     protected function syncSuperAdminRole(string $guard): void

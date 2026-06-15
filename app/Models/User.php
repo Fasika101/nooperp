@@ -24,6 +24,8 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
 
     public const ROLE_MANAGER = 'manager';
 
+    public const ROLE_PROJECTS = 'projects';
+
     /**
      * The attributes that are mass assignable.
      *
