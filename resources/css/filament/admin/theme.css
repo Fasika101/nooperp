@@ -298,6 +298,11 @@ html, body {
     text-size-adjust: 100%;
 }
 
+/* Prevent iOS Safari from zooming when tapping inputs (triggered by font-size < 16px) */
+input, textarea, select {
+    font-size: 16px !important;
+}
+
 /* Prevent any element from blowing past the screen width */
 * {
     min-width: 0;

@@ -1,55 +1,58 @@
 <x-filament-panels::page>
 
     {{-- Toolbar: header with New Event button --}}
-    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-gray-900/5 dark:bg-gray-800 dark:ring-white/10">
-        <div class="flex flex-wrap gap-4 text-xs">
-            <span class="font-semibold text-gray-500 dark:text-gray-400">Legend:</span>
+    <div class="rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5 dark:bg-gray-800 dark:ring-white/10 px-4 py-3 space-y-3">
+        {{-- Top row: title + button --}}
+        <div class="flex items-center justify-between gap-3">
+            <span class="text-sm font-semibold text-gray-500 dark:text-gray-400">Legend</span>
+            <a href="{{ \App\Filament\Projects\Resources\CalendarEventResource::getUrl('create') }}"
+               class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 shrink-0">
+                <x-heroicon-o-plus class="h-4 w-4" />
+                <span>New Event</span>
+            </a>
+        </div>
+        {{-- Legend dots — wraps nicely on small screens --}}
+        <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs">
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-violet-500"></span>
-                <span class="text-gray-600 dark:text-gray-300">Project deadline</span>
+                <span class="h-2.5 w-2.5 rounded-full bg-violet-500 shrink-0"></span>
+                <span class="text-gray-600 dark:text-gray-300">Deadline</span>
             </span>
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-orange-500"></span>
-                <span class="text-gray-600 dark:text-gray-300">Due in ≤ 3 days</span>
+                <span class="h-2.5 w-2.5 rounded-full bg-orange-500 shrink-0"></span>
+                <span class="text-gray-600 dark:text-gray-300">Due soon</span>
             </span>
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-red-500"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-red-500 shrink-0"></span>
                 <span class="text-gray-600 dark:text-gray-300">Overdue</span>
             </span>
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-blue-500"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-blue-500 shrink-0"></span>
                 <span class="text-gray-600 dark:text-gray-300">Task</span>
             </span>
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-emerald-500"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0"></span>
                 <span class="text-gray-600 dark:text-gray-300">Milestone</span>
             </span>
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-green-700"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-green-700 shrink-0"></span>
                 <span class="text-gray-600 dark:text-gray-300">🇪🇹 Holiday</span>
             </span>
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-gray-400"></span>
-                <span class="text-gray-600 dark:text-gray-300">Completed / Low</span>
+                <span class="h-2.5 w-2.5 rounded-full bg-gray-400 shrink-0"></span>
+                <span class="text-gray-600 dark:text-gray-300">Done / Low</span>
             </span>
             <span class="flex items-center gap-1.5">
-                <span class="h-3 w-3 rounded-full bg-fuchsia-500"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-fuchsia-500 shrink-0"></span>
                 <span class="text-gray-600 dark:text-gray-300">📅 My event</span>
             </span>
         </div>
-
-        <a href="{{ \App\Filament\Projects\Resources\CalendarEventResource::getUrl('create') }}"
-           class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600">
-            <x-heroicon-o-plus class="h-4 w-4" />
-            New Event
-        </a>
     </div>
 
     {{-- Event detail popup (hidden by default) --}}
     <div id="event-popup"
          class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40"
          onclick="if(event.target===this) closePopup()">
-        <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-800">
+        <div class="relative w-full max-w-md mx-4 sm:mx-0 rounded-2xl bg-white p-5 shadow-2xl dark:bg-gray-800">
             <button onclick="closePopup()"
                     class="absolute right-4 top-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <x-heroicon-o-x-mark class="h-5 w-5" />
@@ -131,16 +134,21 @@
         fcScript.onload = function () {
             const isDark = document.documentElement.classList.contains('dark');
 
+            const isMobile = window.innerWidth < 640;
+
             const calendar = new FullCalendar.Calendar(
                 document.getElementById('projects-calendar'),
                 {
-                    initialView: 'dayGridMonth',
+                    initialView: isMobile ? 'listMonth' : 'dayGridMonth',
                     height: 'auto',
-                    headerToolbar: {
-                        left:   'prev,next today',
-                        center: 'title',
-                        right:  'dayGridMonth,listMonth',
-                    },
+                    headerToolbar: isMobile
+                        ? { left: 'prev,next', center: 'title', right: 'today' }
+                        : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
+                    footerToolbar: isMobile
+                        ? { center: 'dayGridMonth,listMonth' }
+                        : false,
+                    eventDisplay: 'block',
+                    dayMaxEvents: isMobile ? 2 : true,
                     events: calendarEvents,
 
                     // Click empty day → open New Event form pre-filled with that date
@@ -179,8 +187,9 @@
     </script>
     @endscript
 
-    {{-- Dark mode FullCalendar overrides --}}
+    {{-- Dark mode + mobile FullCalendar overrides --}}
     <style>
+        /* ── Dark mode ── */
         .dark .fc { color: #e5e7eb; }
         .dark .fc-toolbar-title { color: #f9fafb; }
         .dark .fc-button { background: #374151 !important; border-color: #4b5563 !important; color: #e5e7eb !important; }
@@ -196,6 +205,37 @@
         .dark .fc-list-day-cushion { background: #1f2937 !important; color: #9ca3af; }
         /* Holiday background bands */
         .fc-bg-event { opacity: 0.18 !important; cursor: default !important; }
+
+        /* ── Mobile ── */
+        @media (max-width: 639px) {
+            /* Smaller toolbar title so it fits on one line */
+            .fc-toolbar-title { font-size: 1rem !important; }
+
+            /* Compact nav buttons */
+            .fc-button {
+                padding: 0.25rem 0.5rem !important;
+                font-size: 0.75rem !important;
+            }
+
+            /* Day-number fits in tiny cells */
+            .fc-daygrid-day-number {
+                font-size: 0.7rem;
+                padding: 2px !important;
+            }
+
+            /* Day-of-week header labels: show only 1 letter (Su → S) */
+            .fc-col-header-cell-cushion {
+                font-size: 0.65rem;
+                padding: 4px 2px !important;
+            }
+
+            /* Event pills: clip long titles instead of overflowing */
+            .fc-event-title { font-size: 0.65rem; }
+
+            /* List view: slightly tighter rows */
+            .fc-list-event td { padding: 6px 8px !important; font-size: 0.8rem; }
+            .fc-list-day-cushion { padding: 6px 8px !important; font-size: 0.8rem; }
+        }
     </style>
 
 </x-filament-panels::page>
