@@ -16,6 +16,7 @@ class Expense extends Model
         'branch_id',
         'employee_id',
         'affiliate_id',
+        'project_id',
         'vendor',
         'description',
     ];
@@ -51,6 +52,11 @@ class Expense extends Model
     public function affiliate(): BelongsTo
     {
         return $this->belongsTo(Affiliate::class);
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
     }
 
     public function affiliateCommissionSettlements(): HasMany

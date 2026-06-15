@@ -26,6 +26,7 @@ class Project extends Model
         'status',
         'start_date',
         'end_date',
+        'budget',
         'created_by',
     ];
 
@@ -33,7 +34,8 @@ class Project extends Model
     {
         return [
             'start_date' => 'date',
-            'end_date' => 'date',
+            'end_date'   => 'date',
+            'budget'     => 'decimal:2',
         ];
     }
 
@@ -82,5 +84,25 @@ class Project extends Model
     public function deals(): HasMany
     {
         return $this->hasMany(CrmDeal::class);
+    }
+
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(Expense::class);
+    }
+
+    public function timeLogs(): HasMany
+    {
+        return $this->hasMany(ProjectTimeLog::class);
+    }
+
+    public function totalLoggedHours(): float
+    {
+        return (float) $this->timeLogs()->sum('hours');
+    }
+
+    public function totalExpenses(): float
+    {
+        return (float) $this->expenses()->sum('amount');
     }
 }

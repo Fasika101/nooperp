@@ -3,6 +3,7 @@
 namespace App\Filament\Projects\Pages;
 
 use App\Filament\Projects\Resources\ProjectResource;
+use App\Filament\Projects\Resources\ProjectTaskResource;
 use App\Models\Project;
 use App\Models\ProjectTask;
 use App\Models\ProjectTaskStage;
@@ -66,7 +67,7 @@ class ProjectKanbanPage extends Page
             });
         }
 
-        $tasks = $query->get();
+        $tasks = $query->with('labels')->get();
 
         return [
             'stages' => $stages->map(fn ($s) => [
@@ -85,8 +86,11 @@ class ProjectKanbanPage extends Page
                 'isDueSoon' => $t->due_date !== null
                     && ! $t->due_date->isPast()
                     && $t->due_date->lte(now()->addDays(3)),
-                'editUrl'   => ProjectResource::getUrl('edit', ['record' => $t->project_id]),
+                'editUrl'   => ProjectTaskResource::getUrl('edit', ['record' => $t->id]),
                 'assignees' => $t->assignees->pluck('name')->implode(', '),
+                'progress'  => $t->progress,
+                'isStarred' => (bool) $t->is_starred,
+                'labels'    => $t->labels->map(fn ($l) => ['name' => $l->name, 'color' => $l->color])->values()->toArray(),
             ])->values()->toArray(),
         ];
     }

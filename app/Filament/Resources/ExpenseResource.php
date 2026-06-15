@@ -164,6 +164,12 @@ class ExpenseResource extends Resource
                 TextInput::make('vendor')
                     ->maxLength(255)
                     ->placeholder('Vendor or payee'),
+                Select::make('project_id')
+                    ->label('Project (optional)')
+                    ->relationship('project', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->nullable(),
                 Textarea::make('description')
                     ->columnSpanFull()
                     ->placeholder('Notes or description'),
@@ -215,6 +221,9 @@ class ExpenseResource extends Resource
                                 return AffiliateResource::getUrl('view', ['record' => $record->affiliate_id]);
                             }),
                         TextEntry::make('vendor')
+                            ->placeholder('—'),
+                        TextEntry::make('project.name')
+                            ->label('Project')
                             ->placeholder('—'),
                         TextEntry::make('description')
                             ->placeholder('—')

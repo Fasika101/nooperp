@@ -50,16 +50,39 @@
                             <div class="task-card group cursor-grab select-none rounded-lg bg-white p-3 shadow-sm ring-1 ring-gray-900/5 transition-shadow hover:shadow-md active:cursor-grabbing dark:bg-gray-800 dark:ring-white/10"
                                  :data-task-id="task.id">
 
-                                {{-- Title --}}
-                                <a :href="task.editUrl"
-                                   @click.stop
-                                   class="block text-sm font-semibold text-gray-900 hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
-                                   x-text="task.title"></a>
+                                {{-- Title row with star --}}
+                                <div class="flex items-start justify-between gap-1">
+                                    <a :href="task.editUrl"
+                                       @click.stop
+                                       class="block text-sm font-semibold text-gray-900 hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
+                                       x-text="task.title"></a>
+                                    <span x-show="task.isStarred"
+                                          class="flex-shrink-0 text-amber-400"
+                                          title="Starred">⭐</span>
+                                </div>
 
                                 {{-- Project name (when showing all) --}}
                                 <p class="mt-0.5 truncate text-xs text-gray-400 dark:text-gray-500"
                                    x-show="task.project"
                                    x-text="task.project"></p>
+
+                                {{-- Labels row --}}
+                                <div class="mt-1.5 flex flex-wrap gap-1" x-show="task.labels && task.labels.length > 0">
+                                    <template x-for="label in task.labels" :key="label.name">
+                                        <span class="rounded-full px-2 py-0.5 text-xs font-medium"
+                                              :class="{
+                                                  'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300':     label.color === 'blue',
+                                                  'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300': label.color === 'green',
+                                                  'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300':         label.color === 'red',
+                                                  'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300': label.color === 'yellow',
+                                                  'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300': label.color === 'purple',
+                                                  'bg-pink-100 text-pink-700 dark:bg-pink-900/50 dark:text-pink-300':     label.color === 'pink',
+                                                  'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300': label.color === 'orange',
+                                                  'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400':        !['blue','green','red','yellow','purple','pink','orange'].includes(label.color),
+                                              }"
+                                              x-text="label.name"></span>
+                                    </template>
+                                </div>
 
                                 {{-- Meta row --}}
                                 <div class="mt-2 flex flex-wrap items-center gap-1.5">
@@ -84,6 +107,23 @@
                                         <x-heroicon-s-calendar class="h-3 w-3" />
                                         <span x-text="task.dueDate"></span>
                                     </span>
+                                </div>
+
+                                {{-- Progress bar --}}
+                                <div x-show="task.progress > 0" class="mt-2">
+                                    <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 mb-0.5">
+                                        <span>Progress</span>
+                                        <span x-text="task.progress + '%'"></span>
+                                    </div>
+                                    <div class="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+                                        <div class="h-1.5 rounded-full transition-all"
+                                             :class="{
+                                                 'bg-green-500': task.progress === 100,
+                                                 'bg-blue-500':  task.progress >= 50 && task.progress < 100,
+                                                 'bg-amber-500': task.progress > 0 && task.progress < 50,
+                                             }"
+                                             :style="`width: ${task.progress}%`"></div>
+                                    </div>
                                 </div>
 
                                 {{-- Assignees --}}

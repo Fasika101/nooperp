@@ -23,3 +23,7 @@ Financial
 
 1. National ID
 2. CV WITH NEWONLINEOPTICS 2023
+
+
+php artisan shield:generate --all
+Policies & Permissions

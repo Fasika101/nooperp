@@ -2,11 +2,13 @@
 
 namespace App\Providers\Filament;
 
+use App\Models\ProjectTask;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -40,6 +42,21 @@ class ProjectsPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Projects/Resources'), for: 'App\\Filament\\Projects\\Resources')
             ->discoverPages(in: app_path('Filament/Projects/Pages'), for: 'App\\Filament\\Projects\\Pages')
             ->discoverWidgets(in: app_path('Filament/Projects/Widgets'), for: 'App\\Filament\\Projects\\Widgets')
+            ->navigationItems([
+                NavigationItem::make('Tasks Due Today')
+                    ->url('/projects/project-tasks?tableFilters[due_today]=1')
+                    ->icon('heroicon-o-exclamation-circle')
+                    ->group('My Work')
+                    ->sort(15)
+                    ->badge(fn (): ?string => (string) (ProjectTask::query()
+                        ->whereHas('project', function ($q) {
+                            $uid = auth()->id();
+                            $q->where('created_by', $uid)
+                                ->orWhereHas('members', fn ($m) => $m->whereKey($uid));
+                        })
+                        ->whereDate('due_date', today())
+                        ->count() ?: null)),
+            ])
             ->widgets([])
             ->middleware([
                 EncryptCookies::class,
