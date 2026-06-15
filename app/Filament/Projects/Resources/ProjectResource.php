@@ -51,7 +51,7 @@ class ProjectResource extends Resource
 
         $user = auth()->user();
 
-        if ($user->hasRole(['super_admin', 'manager'])) {
+        if ($user->hasRole('super_admin')) {
             return true;
         }
 
@@ -160,6 +160,22 @@ class ProjectResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(function ($query) {
+                $user = auth()->user();
+
+                // super_admin sees every project
+                if ($user->hasRole('super_admin')) {
+                    return $query;
+                }
+
+                // Everyone else only sees projects they created or are a member of
+                $uid = $user->id;
+
+                return $query->where(function ($q) use ($uid) {
+                    $q->where('created_by', $uid)
+                        ->orWhereHas('members', fn ($m) => $m->whereKey($uid));
+                });
+            })
             ->columns([
                 Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('customer.name')->placeholder('—'),
@@ -202,7 +218,8 @@ class ProjectResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->visible(fn () => auth()->user()->hasRole('super_admin')),
                 ]),
             ]);
     }

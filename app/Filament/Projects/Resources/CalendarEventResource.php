@@ -115,7 +115,14 @@ class CalendarEventResource extends Resource
     {
         return $table
             ->modifyQueryUsing(function ($query) {
-                $uid = auth()->id();
+                $user = auth()->user();
+
+                // super_admin sees all events from all employees
+                if ($user->hasRole('super_admin')) {
+                    return $query;
+                }
+
+                $uid = $user->id;
 
                 return $query->where(function ($q) use ($uid) {
                     $q->where('created_by', $uid)
@@ -143,9 +150,11 @@ class CalendarEventResource extends Resource
             ->defaultSort('start_date')
             ->actions([
                 EditAction::make()
-                    ->visible(fn (CalendarEvent $r) => (int) $r->created_by === (int) auth()->id()),
+                    ->visible(fn (CalendarEvent $r) => auth()->user()->hasRole('super_admin')
+                        || (int) $r->created_by === (int) auth()->id()),
                 DeleteAction::make()
-                    ->visible(fn (CalendarEvent $r) => (int) $r->created_by === (int) auth()->id()),
+                    ->visible(fn (CalendarEvent $r) => auth()->user()->hasRole('super_admin')
+                        || (int) $r->created_by === (int) auth()->id()),
             ]);
     }
 

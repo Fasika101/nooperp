@@ -180,6 +180,20 @@ class ProjectTaskResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(function ($query) {
+                $user = auth()->user();
+
+                if ($user->hasRole('super_admin')) {
+                    return $query;
+                }
+
+                $uid = $user->id;
+
+                return $query->whereHas('project', function ($q) use ($uid) {
+                    $q->where('created_by', $uid)
+                        ->orWhereHas('members', fn ($m) => $m->whereKey($uid));
+                });
+            })
             ->columns([
                 Tables\Columns\IconColumn::make('is_starred')
                     ->label('⭐')
@@ -236,7 +250,20 @@ class ProjectTaskResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('project_id')
                     ->label('Project')
-                    ->options(fn () => Project::orderBy('name')->pluck('name', 'id')),
+                    ->options(function () {
+                        $user = auth()->user();
+
+                        if ($user->hasRole('super_admin')) {
+                            return Project::orderBy('name')->pluck('name', 'id');
+                        }
+
+                        $uid = $user->id;
+
+                        return Project::where(function ($q) use ($uid) {
+                            $q->where('created_by', $uid)
+                                ->orWhereHas('members', fn ($m) => $m->whereKey($uid));
+                        })->orderBy('name')->pluck('name', 'id');
+                    }),
                 Tables\Filters\SelectFilter::make('priority')
                     ->options([
                         ProjectTask::PRIORITY_LOW    => 'Low',

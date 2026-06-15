@@ -26,17 +26,24 @@ class ProjectCalendarPage extends Page
 
     public function getCalendarEvents(): array
     {
-        $uid = auth()->id();
-        $events = [];
+        $user       = auth()->user();
+        $uid        = $user->id;
+        $isSuperAdmin = $user->hasRole('super_admin');
+        $events     = [];
 
         // ── Project deadlines ────────────────────────────────────────────────
-        Project::query()
+        $projectQuery = Project::query()
             ->whereNotNull('end_date')
-            ->whereNotIn('status', [Project::STATUS_CANCELLED])
-            ->where(function ($q) use ($uid) {
+            ->whereNotIn('status', [Project::STATUS_CANCELLED]);
+
+        if (! $isSuperAdmin) {
+            $projectQuery->where(function ($q) use ($uid) {
                 $q->where('created_by', $uid)
                     ->orWhereHas('members', fn ($m) => $m->whereKey($uid));
-            })
+            });
+        }
+
+        $projectQuery
             ->get()
             ->each(function (Project $project) use (&$events) {
                 $color = match (true) {
@@ -59,13 +66,18 @@ class ProjectCalendarPage extends Page
             });
 
         // ── Task due dates ───────────────────────────────────────────────────
-        ProjectTask::query()
+        $taskQuery = ProjectTask::query()
             ->whereNotNull('due_date')
-            ->with('project:id,name')
-            ->whereHas('project', function ($q) use ($uid) {
+            ->with('project:id,name');
+
+        if (! $isSuperAdmin) {
+            $taskQuery->whereHas('project', function ($q) use ($uid) {
                 $q->where('created_by', $uid)
                     ->orWhereHas('members', fn ($m) => $m->whereKey($uid));
-            })
+            });
+        }
+
+        $taskQuery
             ->get()
             ->each(function (ProjectTask $task) use (&$events) {
                 $color = match ($task->priority) {
@@ -91,14 +103,19 @@ class ProjectCalendarPage extends Page
             });
 
         // ── Milestone due dates ──────────────────────────────────────────────
-        ProjectMilestone::query()
+        $milestoneQuery = ProjectMilestone::query()
             ->whereNotNull('due_date')
             ->whereNull('completed_at')
-            ->whereHas('project', function ($q) use ($uid) {
+            ->with('project:id,name');
+
+        if (! $isSuperAdmin) {
+            $milestoneQuery->whereHas('project', function ($q) use ($uid) {
                 $q->where('created_by', $uid)
                     ->orWhereHas('members', fn ($m) => $m->whereKey($uid));
-            })
-            ->with('project:id,name')
+            });
+        }
+
+        $milestoneQuery
             ->get()
             ->each(function (ProjectMilestone $milestone) use (&$events) {
                 $color = $milestone->due_date->isPast() ? '#ef4444' : '#10b981';
@@ -118,13 +135,18 @@ class ProjectCalendarPage extends Page
                 ];
             });
 
-        // ── User calendar events (own + invited) ─────────────────────────────
-        CalendarEvent::query()
-            ->with(['creator:id,name', 'attendees:id,name'])
-            ->where(function ($q) use ($uid) {
+        // ── User calendar events (own + invited; super_admin sees all) ────────
+        $calEventQuery = CalendarEvent::query()
+            ->with(['creator:id,name', 'attendees:id,name']);
+
+        if (! $isSuperAdmin) {
+            $calEventQuery->where(function ($q) use ($uid) {
                 $q->where('created_by', $uid)
                     ->orWhereHas('attendees', fn ($a) => $a->whereKey($uid));
-            })
+            });
+        }
+
+        $calEventQuery
             ->get()
             ->each(function (CalendarEvent $ev) use (&$events) {
                 $end = $ev->end_date

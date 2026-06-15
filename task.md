@@ -29,3 +29,20 @@ php artisan shield:generate --all
 Policies & Permissions
 
 ALTER TABLE projects ENGINE=InnoDB;
+
+npm run build
+php artisan view:clear
+php artisan cache:clear
+php artisan config:clear
+
+
+export PATH="/opt/alt/alt-nodejs22/root/usr/bin:$PATH"
+
+
+php artisan migrate --force       # run new migrations
+php artisan shield:generate --all --panel=projects
+php artisan shield:generate --all --panel=admin
+php artisan config:cache
+php artisan route:cache
+php artisan view:clear
+npm run build

@@ -35,11 +35,20 @@ html, body {
     overflow-x: hidden;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* Prevent double-tap zoom on the page root */
+    touch-action: manipulation;
 }
 
 /* Prevent iOS Safari from zooming when tapping inputs (triggered by font-size < 16px) */
 input, textarea, select {
     font-size: 16px !important;
+    /* Prevent double-tap zoom on inputs */
+    touch-action: manipulation;
+}
+
+/* Prevent double-tap zoom on every interactive element */
+a, button, [role="button"], label, [tabindex] {
+    touch-action: manipulation;
 }
 
 * {
