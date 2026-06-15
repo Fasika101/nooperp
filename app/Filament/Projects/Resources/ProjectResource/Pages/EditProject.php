@@ -3,6 +3,7 @@
 namespace App\Filament\Projects\Resources\ProjectResource\Pages;
 
 use App\Filament\Projects\Resources\ProjectResource;
+use App\Models\Project;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
@@ -44,7 +45,8 @@ class EditProject extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            DeleteAction::make(),
+            DeleteAction::make()
+                ->visible(fn () => ProjectResource::canEditSettings($this->record)),
         ];
     }
 }

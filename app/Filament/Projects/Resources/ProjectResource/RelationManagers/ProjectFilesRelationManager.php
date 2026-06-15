@@ -3,6 +3,7 @@
 namespace App\Filament\Projects\Resources\ProjectResource\RelationManagers;
 
 use App\Models\ProjectFile;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Forms\Components\FileUpload;
@@ -73,7 +74,7 @@ class ProjectFilesRelationManager extends RelationManager
                     }),
             ])
             ->actions([
-                Tables\Actions\Action::make('download')
+                Action::make('download')
                     ->label('Download')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('gray')

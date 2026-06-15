@@ -29,3 +29,32 @@
 .fi-main {
     @apply ps-3 pe-4 md:ps-4 md:pe-6 lg:ps-4 lg:pe-8;
 }
+
+/* ── Mobile / viewport fixes ─────────────────────────────────────────── */
+html, body {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+* {
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+@media (max-width: 1023px) {
+    .fi-main {
+        @apply px-3 py-3;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .fi-ta-table-wrp {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .fi-btn {
+        min-height: 2.5rem;
+    }
+}

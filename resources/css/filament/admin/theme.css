@@ -290,3 +290,45 @@
 .fi-wi-stats-overview-stat .fi-wi-stats-overview-stat-value {
     @apply text-2xl;
 }
+
+/* ── Mobile / viewport fixes ─────────────────────────────────────────── */
+html, body {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* Prevent any element from blowing past the screen width */
+* {
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+/* Filament sidebar collapses on mobile — ensure main fills full width */
+@media (max-width: 1023px) {
+    .fi-layout {
+        flex-direction: column;
+    }
+
+    .fi-sidebar {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .fi-main {
+        @apply px-3 py-3;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Tables: allow horizontal scroll inside a container, not the whole page */
+    .fi-ta-table-wrp {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Larger tap targets for buttons on mobile */
+    .fi-btn {
+        min-height: 2.5rem;
+    }
+}

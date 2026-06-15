@@ -91,6 +91,10 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->renderHook(
+                PanelsRenderHook::HEAD_START,
+                fn (): string => '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">',
+            )
+            ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): string => view('filament.hooks.telegram-unread-poller')->render(),
             );

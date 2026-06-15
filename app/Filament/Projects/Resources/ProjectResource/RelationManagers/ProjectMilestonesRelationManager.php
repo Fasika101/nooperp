@@ -3,6 +3,7 @@
 namespace App\Filament\Projects\Resources\ProjectResource\RelationManagers;
 
 use App\Models\ProjectMilestone;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -70,7 +71,7 @@ class ProjectMilestonesRelationManager extends RelationManager
                     }),
             ])
             ->actions([
-                Tables\Actions\Action::make('toggle')
+                Action::make('toggle')
                     ->label(fn (ProjectMilestone $r) => $r->isCompleted() ? 'Reopen' : 'Mark Complete')
                     ->icon(fn (ProjectMilestone $r) => $r->isCompleted() ? 'heroicon-o-arrow-uturn-left' : 'heroicon-o-check-circle')
                     ->color(fn (ProjectMilestone $r) => $r->isCompleted() ? 'gray' : 'success')

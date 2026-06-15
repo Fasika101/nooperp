@@ -1,32 +1,63 @@
 <x-filament-panels::page>
 
-    {{-- Legend --}}
-    <div class="flex flex-wrap gap-4 rounded-xl bg-white px-4 py-3 text-xs shadow-sm ring-1 ring-gray-900/5 dark:bg-gray-800 dark:ring-white/10">
-        <span class="font-semibold text-gray-500 dark:text-gray-400">Legend:</span>
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-full bg-violet-500"></span>
-            <span class="text-gray-600 dark:text-gray-300">Project deadline</span>
-        </span>
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-full bg-orange-500"></span>
-            <span class="text-gray-600 dark:text-gray-300">Due in ≤ 3 days</span>
-        </span>
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-full bg-red-500"></span>
-            <span class="text-gray-600 dark:text-gray-300">Overdue</span>
-        </span>
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-full bg-blue-500"></span>
-            <span class="text-gray-600 dark:text-gray-300">Task due date</span>
-        </span>
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-full bg-emerald-500"></span>
-            <span class="text-gray-600 dark:text-gray-300">Milestone due date</span>
-        </span>
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-full bg-gray-400"></span>
-            <span class="text-gray-600 dark:text-gray-300">Completed / Low priority</span>
-        </span>
+    {{-- Toolbar: header with New Event button --}}
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-gray-900/5 dark:bg-gray-800 dark:ring-white/10">
+        <div class="flex flex-wrap gap-4 text-xs">
+            <span class="font-semibold text-gray-500 dark:text-gray-400">Legend:</span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-violet-500"></span>
+                <span class="text-gray-600 dark:text-gray-300">Project deadline</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-orange-500"></span>
+                <span class="text-gray-600 dark:text-gray-300">Due in ≤ 3 days</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-red-500"></span>
+                <span class="text-gray-600 dark:text-gray-300">Overdue</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-blue-500"></span>
+                <span class="text-gray-600 dark:text-gray-300">Task</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-emerald-500"></span>
+                <span class="text-gray-600 dark:text-gray-300">Milestone</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-green-700"></span>
+                <span class="text-gray-600 dark:text-gray-300">🇪🇹 Holiday</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-gray-400"></span>
+                <span class="text-gray-600 dark:text-gray-300">Completed / Low</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+                <span class="h-3 w-3 rounded-full bg-fuchsia-500"></span>
+                <span class="text-gray-600 dark:text-gray-300">📅 My event</span>
+            </span>
+        </div>
+
+        <a href="{{ \App\Filament\Projects\Resources\CalendarEventResource::getUrl('create') }}"
+           class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600">
+            <x-heroicon-o-plus class="h-4 w-4" />
+            New Event
+        </a>
+    </div>
+
+    {{-- Event detail popup (hidden by default) --}}
+    <div id="event-popup"
+         class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40"
+         onclick="if(event.target===this) closePopup()">
+        <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-800">
+            <button onclick="closePopup()"
+                    class="absolute right-4 top-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                <x-heroicon-o-x-mark class="h-5 w-5" />
+            </button>
+            <h3 id="popup-title" class="text-lg font-bold text-gray-900 dark:text-white mb-3"></h3>
+            <dl class="space-y-1.5 text-sm text-gray-700 dark:text-gray-300" id="popup-body"></dl>
+            <div class="mt-4 flex gap-2" id="popup-actions"></div>
+        </div>
     </div>
 
     {{-- Calendar container --}}
@@ -37,7 +68,62 @@
 
     @script
     <script>
-        const calendarEvents = {!! \Illuminate\Support\Js::from($this->getCalendarEvents()) !!};
+        const calendarEvents    = {!! \Illuminate\Support\Js::from($this->getCalendarEvents()) !!};
+        const createEventUrl    = {!! \Illuminate\Support\Js::from(\App\Filament\Projects\Resources\CalendarEventResource::getUrl('create')) !!};
+
+        function closePopup() {
+            document.getElementById('event-popup').classList.add('hidden');
+            document.getElementById('event-popup').classList.remove('flex');
+        }
+
+        function showPopup(info) {
+            const ev    = info.event;
+            const props = ev.extendedProps;
+
+            // Don't popup for background holiday bands — just navigate if URL
+            if (props.type === 'holiday') return;
+
+            info.jsEvent.preventDefault();
+
+            document.getElementById('popup-title').textContent = ev.title;
+
+            const rows = [];
+
+            if (props.type === 'event') {
+                if (props.description) rows.push(['Description', props.description]);
+                if (props.location)    rows.push(['Location', props.location]);
+                if (props.createdBy)   rows.push(['Organiser', props.createdBy]);
+                if (props.attendees)   rows.push(['Attendees', props.attendees]);
+            } else if (props.type === 'project') {
+                rows.push(['Status', props.status ?? '']);
+            } else if (props.type === 'task') {
+                if (props.project) rows.push(['Project', props.project]);
+            } else if (props.type === 'milestone') {
+                if (props.project) rows.push(['Project', props.project]);
+            }
+
+            document.getElementById('popup-body').innerHTML = rows.map(([label, val]) =>
+                `<div class="flex gap-2"><dt class="font-medium text-gray-500 dark:text-gray-400 w-24 flex-shrink-0">${label}</dt><dd>${val}</dd></div>`
+            ).join('');
+
+            const actionsEl = document.getElementById('popup-actions');
+            actionsEl.innerHTML = '';
+            if (ev.url) {
+                const link = document.createElement('a');
+                link.href = ev.url;
+                link.textContent = props.type === 'event' ? 'Edit event' : 'Open';
+                link.className = 'inline-flex items-center rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700';
+                actionsEl.appendChild(link);
+            }
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.onclick = closePopup;
+            closeBtn.className = 'inline-flex items-center rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600';
+            actionsEl.appendChild(closeBtn);
+
+            document.getElementById('event-popup').classList.remove('hidden');
+            document.getElementById('event-popup').classList.add('flex');
+        }
 
         // Load FullCalendar from CDN then initialize
         const fcScript = document.createElement('script');
@@ -56,21 +142,29 @@
                         right:  'dayGridMonth,listMonth',
                     },
                     events: calendarEvents,
+
+                    // Click empty day → open New Event form pre-filled with that date
+                    dateClick(info) {
+                        window.location.href = createEventUrl + '?date=' + info.dateStr;
+                    },
+
+                    // Click event → show popup (non-holidays) or follow URL
                     eventClick(info) {
-                        info.jsEvent.preventDefault();
-                        if (info.event.url) {
-                            window.location.href = info.event.url;
+                        const props = info.event.extendedProps;
+                        if (props.type === 'holiday') {
+                            info.jsEvent.preventDefault();
+                            return;
+                        }
+                        showPopup(info);
+                    },
+
+                    eventDidMount(info) {
+                        const props = info.event.extendedProps;
+                        if (props.type === 'holiday') {
+                            info.el.style.cursor = 'default';
                         }
                     },
-                    eventDidMount(info) {
-                        // Tooltip with extra info
-                        const props = info.event.extendedProps;
-                        const tip = props.type === 'project'
-                            ? 'Project deadline — ' + info.event.title.replace('📁 ', '')
-                            : 'Task: ' + info.event.title.replace('✓ ', '') + (props.project ? ' (' + props.project + ')' : '');
-                        info.el.title = tip;
-                    },
-                    // Basic dark-mode aware colors
+
                     themeSystem: 'standard',
                     dayCellClassNames: isDark ? 'fc-dark-cell' : '',
                 }
@@ -78,7 +172,6 @@
 
             calendar.render();
 
-            // Re-render on Livewire navigate (panel navigation)
             document.addEventListener('livewire:navigated', () => calendar.render());
         };
 
@@ -86,7 +179,7 @@
     </script>
     @endscript
 
-    {{-- Dark mode minimal FullCalendar overrides --}}
+    {{-- Dark mode FullCalendar overrides --}}
     <style>
         .dark .fc { color: #e5e7eb; }
         .dark .fc-toolbar-title { color: #f9fafb; }
@@ -101,6 +194,8 @@
         .dark .fc-day-today { background: rgba(109,40,217,0.1) !important; }
         .dark .fc-list-event { color: #e5e7eb; }
         .dark .fc-list-day-cushion { background: #1f2937 !important; color: #9ca3af; }
+        /* Holiday background bands */
+        .fc-bg-event { opacity: 0.18 !important; cursor: default !important; }
     </style>
 
 </x-filament-panels::page>

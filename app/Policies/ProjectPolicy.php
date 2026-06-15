@@ -29,12 +29,29 @@ class ProjectPolicy
 
     public function update(AuthUser $authUser, Project $project): bool
     {
-        return $authUser->can('Update:Project');
+        if (! $authUser->can('Update:Project')) {
+            return false;
+        }
+
+        // super_admin and manager bypass the creator restriction
+        if ($authUser->hasRole(['super_admin', 'manager'])) {
+            return true;
+        }
+
+        return (int) $project->created_by === (int) $authUser->id;
     }
 
     public function delete(AuthUser $authUser, Project $project): bool
     {
-        return $authUser->can('Delete:Project');
+        if (! $authUser->can('Delete:Project')) {
+            return false;
+        }
+
+        if ($authUser->hasRole(['super_admin', 'manager'])) {
+            return true;
+        }
+
+        return (int) $project->created_by === (int) $authUser->id;
     }
 
     public function restore(AuthUser $authUser, Project $project): bool

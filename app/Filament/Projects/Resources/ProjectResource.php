@@ -39,6 +39,25 @@ class ProjectResource extends Resource
 
     protected static ?int $navigationSort = 30;
 
+    /**
+     * Returns true when the current user is allowed to edit project settings.
+     * Used by form fields to lock themselves for non-creators.
+     */
+    public static function canEditSettings(?Project $project = null): bool
+    {
+        if (! $project) {
+            return true; // Create form — always editable
+        }
+
+        $user = auth()->user();
+
+        if ($user->hasRole(['super_admin', 'manager'])) {
+            return true;
+        }
+
+        return (int) $project->created_by === (int) $user->id;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
@@ -49,7 +68,9 @@ class ProjectResource extends Resource
                     ->schema([
                         TextInput::make('name')
                             ->required()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
                         Select::make('status')
                             ->options([
                                 Project::STATUS_DRAFT     => 'Draft',
@@ -59,22 +80,34 @@ class ProjectResource extends Resource
                                 Project::STATUS_CANCELLED => 'Cancelled',
                             ])
                             ->required()
-                            ->default(Project::STATUS_ACTIVE),
+                            ->default(Project::STATUS_ACTIVE)
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
                         Textarea::make('description')
                             ->rows(3)
-                            ->columnSpanFull(),
+                            ->columnSpanFull()
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
                         Select::make('customer_id')
                             ->relationship('customer', 'name')
                             ->preload()
-                            ->searchable(),
+                            ->searchable()
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
                         TextInput::make('budget')
                             ->label('Budget')
                             ->numeric()
                             ->prefix('ETB')
-                            ->minValue(0),
-                        DatePicker::make('start_date'),
+                            ->minValue(0)
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
+                        DatePicker::make('start_date')
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
                         DatePicker::make('end_date')
-                            ->helperText('Deadline used for due alerts and the countdown timer.'),
+                            ->helperText('Deadline used for due alerts and the countdown timer.')
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
                         Select::make('member_ids')
                             ->label('Team members')
                             ->multiple()
@@ -82,7 +115,15 @@ class ProjectResource extends Resource
                             ->preload()
                             ->options(fn () => User::query()->orderBy('name')->pluck('name', 'id'))
                             ->helperText('Creator is always kept on the team when you save.')
-                            ->columnSpanFull(),
+                            ->columnSpanFull()
+                            ->disabled(fn (?Project $record) => ! static::canEditSettings($record))
+                            ->dehydrated(),
+
+                        \Filament\Forms\Components\Placeholder::make('readonly_notice')
+                            ->label('')
+                            ->content('You can view this project but only the creator can edit its settings.')
+                            ->columnSpanFull()
+                            ->visible(fn (?Project $record) => $record !== null && ! static::canEditSettings($record)),
                     ]),
 
                 Section::make('Financials')
@@ -144,10 +185,14 @@ class ProjectResource extends Resource
             ])
             ->defaultSort('updated_at', 'desc')
             ->actions([
-                EditAction::make(),
+                EditAction::make()
+                    ->visible(fn (Project $record) => static::canEditSettings($record)),
+                \Filament\Actions\ViewAction::make()
+                    ->visible(fn (Project $record) => ! static::canEditSettings($record)),
                 ReplicateAction::make()
                     ->label('Duplicate')
                     ->icon('heroicon-o-document-duplicate')
+                    ->visible(fn (Project $record) => static::canEditSettings($record))
                     ->beforeReplicaSaved(function (Project $replica): void {
                         $replica->name       = 'Copy of ' . $replica->name;
                         $replica->status     = Project::STATUS_DRAFT;

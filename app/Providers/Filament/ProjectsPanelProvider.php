@@ -74,6 +74,10 @@ class ProjectsPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->renderHook(
+                PanelsRenderHook::HEAD_START,
+                fn (): string => '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">',
+            )
+            ->renderHook(
                 PanelsRenderHook::TOPBAR_END,
                 fn (): string => view('filament.projects.hooks.return-to-erp')->render(),
             );
