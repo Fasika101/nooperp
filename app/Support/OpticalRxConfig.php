@@ -11,6 +11,16 @@ class OpticalRxConfig
 {
     public const CACHE_KEY = 'optical_rx_config_v1';
 
+    /** Setting keys for single-vision compound tier flat prices */
+    public const COMPOUND_SV_TIER1_SETTING = 'optical_sv_compound_tier1_price';
+    public const COMPOUND_SV_TIER2_SETTING = 'optical_sv_compound_tier2_price';
+
+    /**
+     * Returned from prescriptionAddOn() when single-vision compound values are
+     * beyond both tiers — the cashier must enter a custom price in the POS.
+     */
+    public const COMPOUND_CUSTOM_SENTINEL = -1.0;
+
     public static function sphereGroupForVision(string $vision): string
     {
         return $vision === 'progressive'
@@ -98,6 +108,43 @@ class OpticalRxConfig
             + self::priceForGroupValue(self::cylinderGroupForVision($vision), $cyl);
     }
 
+    public static function getCompoundSvTier1Price(): float
+    {
+        return (float) Setting::get(self::COMPOUND_SV_TIER1_SETTING, 0);
+    }
+
+    public static function getCompoundSvTier2Price(): float
+    {
+        return (float) Setting::get(self::COMPOUND_SV_TIER2_SETTING, 0);
+    }
+
+    private static function isBlank(?string $val): bool
+    {
+        if ($val === null || $val === '' || $val === OpticalRxOptions::UNKNOWN) {
+            return true;
+        }
+        // Plano (0.00) = no refractive power = treat as absent
+        return is_numeric($val) && (float) $val === 0.0;
+    }
+
+    private static function absFloat(?string $val): float
+    {
+        return self::isBlank($val) ? 0.0 : abs((float) $val);
+    }
+
+    /**
+     * Returns the diopter add-on price for a prescription.
+     *
+     * For progressive vision: sum of both eyes (unchanged).
+     *
+     * For single vision:
+     *   - SPH only  → higher of both eyes' SPH prices (one pair price)
+     *   - CYL only  → higher of both eyes' CYL prices (one pair price)
+     *   - Compound  → flat tier price based on worst-eye absolute values:
+     *       Tier 1 (mild):   effectiveSph ≤ 4.00 AND effectiveCyl ≤ 2.00
+     *       Tier 2 (strong): effectiveSph > 4.00 OR effectiveCyl > 2.00 (up to 9/4)
+     *       Beyond tiers:    returns COMPOUND_CUSTOM_SENTINEL (-1.0) — cashier enters price manually
+     */
     public static function prescriptionAddOn(
         string $vision,
         ?string $odSph,
@@ -105,11 +152,58 @@ class OpticalRxConfig
         ?string $osSph,
         ?string $osCyl,
     ): float {
-        return round(
-            self::eyeAddOn($vision, $odSph, $odCyl)
-            + self::eyeAddOn($vision, $osSph, $osCyl),
-            2,
-        );
+        // Progressive: keep existing per-eye additive logic (unchanged)
+        if ($vision !== 'single') {
+            return round(
+                self::eyeAddOn($vision, $odSph, $odCyl)
+                + self::eyeAddOn($vision, $osSph, $osCyl),
+                2,
+            );
+        }
+
+        // ── Single vision ────────────────────────────────────────────────────
+        $hasSph = ! self::isBlank($odSph) || ! self::isBlank($osSph);
+        $hasCyl = ! self::isBlank($odCyl) || ! self::isBlank($osCyl);
+
+        if (! $hasSph && ! $hasCyl) {
+            return 0.0;
+        }
+
+        $sphGroup = self::sphereGroupForVision('single');
+        $cylGroup = self::cylinderGroupForVision('single');
+
+        if ($hasSph && ! $hasCyl) {
+            // SPH only — one price for the pair (higher value wins)
+            return round(max(
+                self::priceForGroupValue($sphGroup, $odSph),
+                self::priceForGroupValue($sphGroup, $osSph),
+            ), 2);
+        }
+
+        if ($hasCyl && ! $hasSph) {
+            // CYL only — one price for the pair (higher value wins)
+            return round(max(
+                self::priceForGroupValue($cylGroup, $odCyl),
+                self::priceForGroupValue($cylGroup, $osCyl),
+            ), 2);
+        }
+
+        // Compound (both SPH and CYL present) — tier-based flat price
+        $effectiveSph = max(self::absFloat($odSph), self::absFloat($osSph));
+        $effectiveCyl = max(self::absFloat($odCyl), self::absFloat($osCyl));
+
+        // Beyond both tiers — custom price required in POS
+        if ($effectiveSph > 9.00 || $effectiveCyl > 4.00) {
+            return self::COMPOUND_CUSTOM_SENTINEL;
+        }
+
+        // Tier 2: either value exceeds Tier 1 boundary
+        if ($effectiveSph > 4.00 || $effectiveCyl > 2.00) {
+            return round(self::getCompoundSvTier2Price(), 2);
+        }
+
+        // Tier 1: both values within mild range (0.25–4.00 / 0.25–2.00)
+        return round(self::getCompoundSvTier1Price(), 2);
     }
 
     /**

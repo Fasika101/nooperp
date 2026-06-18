@@ -438,8 +438,17 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                 @if($opticalVision === 'progressive')
                                     <p class="pos-optical-notice">Progressive: confirm medium (M) or large (L) frame where required.</p>
                                 @endif
-                                @if($this->getOpticalRxDiopterAddOnAmount() > 0)
-                                    <p class="pos-optical-notice">SPH/CYL add-on for current prescription: {{ \Illuminate\Support\Number::currency($this->getOpticalRxDiopterAddOnAmount(), $this->getDefaultCurrency()) }} (per eye, from Settings).</p>
+                                @php $rxAddOnAmt = $this->getOpticalRxDiopterAddOnAmount(); @endphp
+                                @if($this->isCompoundCustomPrice())
+                                    <div class="pos-optical-notice" style="background: #fef3c7; border-color: #d97706; color: #92400e;">
+                                        ⚠️ Compound prescription exceeds standard tiers. Enter the add-on price manually below.
+                                    </div>
+                                    <div class="pos-cart-field" style="max-width: 14rem; margin-bottom: 0.75rem;">
+                                        <label style="font-size: 0.8125rem; font-weight: 600;">Custom compound add-on ({{ $this->getDefaultCurrency() }})</label>
+                                        <input type="number" wire:model.live="customCompoundPrice" min="0" step="0.01" placeholder="0.00" style="font-size: 1rem;" />
+                                    </div>
+                                @elseif($rxAddOnAmt > 0)
+                                    <p class="pos-optical-notice">SPH/CYL add-on for this prescription: {{ \Illuminate\Support\Number::currency($rxAddOnAmt, $this->getDefaultCurrency()) }} (pair price, from Settings).</p>
                                 @endif
 
                                 <div class="pos-opt-section">
@@ -507,17 +516,22 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 
                                 <div class="pos-opt-section">
                                     <h4>Lens package &amp; price</h4>
-                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Select one priced option (required).@if($this->getOpticalRxDiopterAddOnAmount() > 0) Totals include the SPH/CYL add-on for your prescription.@endif</p>
+                                    @php
+                                        $isCustomCompound = $this->isCompoundCustomPrice();
+                                        $resolvedAddOn = $isCustomCompound
+                                            ? (is_numeric($customCompoundPrice) ? (float) $customCompoundPrice : 0.0)
+                                            : ($rxAddOnAmt ?? 0.0);
+                                    @endphp
+                                    <p style="font-size: 0.8125rem; margin: 0 0 0.5rem; color: rgb(107 114 128);">Select one priced option (required).@if($resolvedAddOn > 0) Totals include the {{ $isCustomCompound ? 'custom' : '' }} SPH/CYL add-on.@endif</p>
                                     <div class="pos-remark-grid">
                                         @foreach($this->getOpticalPrescriptionRemarks() as $remark)
                                             @php
                                                 $rPrice = $opticalVision === 'progressive' ? $remark->price_progressive : $remark->price_single_vision;
-                                                $rxAddOn = $this->getOpticalRxDiopterAddOnAmount();
-                                                $lineTotal = $rPrice + $rxAddOn;
+                                                $lineTotal = $rPrice + $resolvedAddOn;
                                             @endphp
                                             <label class="pos-remark-item {{ (int) $opticalRemarkId === (int) $remark->id ? 'selected' : '' }}">
                                                 <input type="radio" wire:model.live="opticalRemarkId" value="{{ $remark->id }}" style="accent-color: var(--primary-600);" />
-                                                <span><strong>{{ $remark->name }}</strong> — {{ \Illuminate\Support\Number::currency($lineTotal, $this->getDefaultCurrency()) }}@if($rxAddOn > 0) <span style="font-size: 0.75rem; color: rgb(107 114 128);">(incl. {{ \Illuminate\Support\Number::currency($rxAddOn, $this->getDefaultCurrency()) }} SPH/CYL)</span>@endif</span>
+                                                <span><strong>{{ $remark->name }}</strong> — {{ \Illuminate\Support\Number::currency($lineTotal, $this->getDefaultCurrency()) }}@if($resolvedAddOn > 0) <span style="font-size: 0.75rem; color: rgb(107 114 128);">(incl. {{ \Illuminate\Support\Number::currency($resolvedAddOn, $this->getDefaultCurrency()) }} add-on)</span>@endif</span>
                                             </label>
                                         @endforeach
                                     </div>

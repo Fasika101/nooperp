@@ -165,6 +165,9 @@ class PosPage extends Page
 
     public string $repairPrice = '';
 
+    /** Custom add-on price entered by cashier when compound Rx is beyond both tiers */
+    public string $customCompoundPrice = '';
+
     public function mount(): void
     {
         $this->branchId = $this->getResolvedBranchId();
@@ -1609,6 +1612,7 @@ class PosPage extends Page
         $this->opticalVision = $vision;
         $this->opticalRemarkId = null;
         $this->opticalLensTypeIds = [];
+        $this->customCompoundPrice = '';
         $this->resetPrescriptionFields();
     }
 
@@ -1695,19 +1699,56 @@ class PosPage extends Page
     /**
      * Add-on from configured SPH/CYL prices for the current OD/OS selections.
      */
-    public function getOpticalRxDiopterAddOnAmount(): float
+    /**
+     * Returns the calculated diopter add-on amount for the current prescription.
+     *
+     * Returns null when single-vision compound values exceed both pricing tiers,
+     * meaning the cashier must enter a custom price via $customCompoundPrice.
+     * Returns 0.0 when no meaningful Rx values are selected.
+     */
+    public function getOpticalRxDiopterAddOnAmount(): ?float
     {
         if (! $this->opticalVision) {
             return 0.0;
         }
 
-        return OpticalRxPricing::prescriptionAddOn(
+        $result = OpticalRxPricing::prescriptionAddOn(
             $this->opticalVision,
             $this->od_sph,
             $this->od_cyl,
             $this->os_sph,
             $this->os_cyl,
         );
+
+        // Sentinel -1.0 means compound is beyond tiers — signal to blade as null
+        if ($result === \App\Support\OpticalRxConfig::COMPOUND_CUSTOM_SENTINEL) {
+            return null;
+        }
+
+        return $result;
+    }
+
+    /**
+     * True when the current Rx requires a manually entered compound price.
+     */
+    public function isCompoundCustomPrice(): bool
+    {
+        return $this->getOpticalRxDiopterAddOnAmount() === null;
+    }
+
+    /**
+     * Resolves the final add-on amount to use when building the cart line.
+     * Falls back to $customCompoundPrice when compound is beyond tiers.
+     */
+    protected function resolvedDiopterAddOn(): float
+    {
+        $addOn = $this->getOpticalRxDiopterAddOnAmount();
+
+        if ($addOn === null) {
+            return is_numeric($this->customCompoundPrice) ? round((float) $this->customCompoundPrice, 2) : 0.0;
+        }
+
+        return $addOn;
     }
 
     public function appendOpticalCartLine(string $lineLabel, float $price, array $opticalMeta): void
@@ -1790,7 +1831,7 @@ class PosPage extends Page
         }
 
         $basePrice = $remark->priceForVision($this->opticalVision);
-        $diopterAddOn = $this->getOpticalRxDiopterAddOnAmount();
+        $diopterAddOn = $this->resolvedDiopterAddOn();
         $price = $basePrice + $diopterAddOn;
         $visionLabel = $this->opticalVision === 'progressive' ? 'Progressive' : 'Single vision';
 

@@ -16,9 +16,8 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\EmbeddedSchema;
 use Filament\Schemas\Components\Form;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Tabs;
-use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Alignment;
@@ -43,62 +42,50 @@ class LensRxValuesSettingsPage extends Page
     {
         OpticalRxConfig::ensureSeeded();
 
-        $fill = [];
-        foreach (OpticalRxDiopterValue::groups() as $group) {
-            $fill[$group] = OpticalRxConfig::rowsForForm($group);
-        }
-
-        $this->form->fill($fill);
+        $this->form->fill([
+            'compound_sv_tier1_price' => OpticalRxConfig::getCompoundSvTier1Price() ?: '',
+            'compound_sv_tier2_price' => OpticalRxConfig::getCompoundSvTier2Price() ?: '',
+        ]);
     }
 
     public function save(): void
     {
         $data = $this->form->getState();
 
-        OpticalRxConfig::saveFromForm($data);
+        Setting::set(OpticalRxConfig::COMPOUND_SV_TIER1_SETTING, (float) ($data['compound_sv_tier1_price'] ?? 0));
+        Setting::set(OpticalRxConfig::COMPOUND_SV_TIER2_SETTING, (float) ($data['compound_sv_tier2_price'] ?? 0));
 
-        Notification::make()
-            ->success()
-            ->title('Lens RX values saved')
-            ->send();
-
-        $this->form->fill(collect(OpticalRxDiopterValue::groups())
-            ->mapWithKeys(fn (string $group): array => [$group => OpticalRxConfig::rowsForForm($group)])
-            ->all());
+        Notification::make()->success()->title('Compound prices saved')->send();
     }
 
-    public function defaultForm(Schema $schema): Schema
-    {
-        return $schema->statePath('data');
-    }
-
-    public function form(Schema $schema): Schema
+    protected function getHeaderActions(): array
     {
         $currency = Setting::getDefaultCurrency();
 
-        return $schema
-            ->components([
-                Section::make()
-                    ->description('Manage dropdown values and per-eye add-on prices for POS lens customization (SPH/CYL). Built-in values cannot be removed; you can add extra diopter steps (e.g. above +6.00). Unknown “—” in POS is always available and is not priced. Lens package prices are unchanged (Optical → Lens remarks).')
-                    ->schema([
-                        Tabs::make('Groups')
-                            ->tabs(collect(OpticalRxDiopterValue::groupOptions())
-                                ->map(fn (string $label, string $group): Tab => Tab::make($group)
-                                    ->label($label)
-                                    ->schema([
-                                        Repeater::make($group)
-                                            ->label('Values')
-                                            ->schema($this->diopterRepeaterSchema($currency))
-                                            ->defaultItems(0)
-                                            ->addActionLabel('Add diopter value')
-                                            ->deletable(fn (array $state): bool => ! ($state['is_default'] ?? false))
-                                            ->reorderable(false)
-                                            ->columnSpanFull(),
-                                    ]))
-                                ->values()
-                                ->all()),
-                    ]),
-            ]);
+        return collect(OpticalRxDiopterValue::groupOptions())
+            ->map(fn (string $label, string $group): Action => Action::make('configure_' . $group)
+                ->label($label)
+                ->icon('heroicon-o-pencil-square')
+                ->modalHeading("Configure: {$label}")
+                ->modalDescription('Built-in values (greyed out) cannot be removed. You can set their price to 0 to effectively disable the add-on.')
+                ->modalWidth('2xl')
+                ->fillForm(fn (): array => ['rows' => OpticalRxConfig::rowsForForm($group)])
+                ->form([
+                    Repeater::make('rows')
+                        ->label(false)
+                        ->schema($this->diopterRepeaterSchema($currency))
+                        ->defaultItems(0)
+                        ->addActionLabel('Add diopter value')
+                        ->deletable(fn (array $state): bool => ! ($state['is_default'] ?? false))
+                        ->reorderable(false)
+                        ->columnSpanFull(),
+                ])
+                ->action(function (array $data) use ($group): void {
+                    OpticalRxConfig::saveFromForm([$group => $data['rows']]);
+                    Notification::make()->success()->title('Values saved')->send();
+                }))
+            ->values()
+            ->all();
     }
 
     /**
@@ -115,11 +102,11 @@ class LensRxValuesSettingsPage extends Page
                 ->disabled(fn (Get $get): bool => (bool) $get('is_default'))
                 ->dehydrated()
                 ->helperText(fn (Get $get): ?string => $get('is_default')
-                    ? 'Built-in value (cannot change or remove).'
-                    : 'Use two decimals, e.g. 6.25 or -7.50')
+                    ? 'Built-in value — cannot be removed.'
+                    : 'Two decimals, e.g. 6.25 or -7.50')
                 ->placeholder('e.g. 6.25'),
             TextInput::make('price')
-                ->label('Add-on price (per eye)')
+                ->label('Add-on price')
                 ->numeric()
                 ->minValue(0)
                 ->step(0.01)
@@ -129,12 +116,87 @@ class LensRxValuesSettingsPage extends Page
         ];
     }
 
+    public function defaultForm(Schema $schema): Schema
+    {
+        return $schema->statePath('data');
+    }
+
+    public function form(Schema $schema): Schema
+    {
+        $currency = Setting::getDefaultCurrency();
+
+        return $schema->components([
+            Section::make('Single Vision — Compound Pricing')
+                ->description('When a prescription has both SPH and CYL, the system uses a flat price based on these tiers instead of per-value lookup.')
+                ->columns(2)
+                ->schema([
+                    TextInput::make('compound_sv_tier1_price')
+                        ->label('Tier 1 price (mild compound)')
+                        ->helperText('SPH 0.25–4.00 AND CYL 0.25–2.00')
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.01)
+                        ->suffix($currency)
+                        ->placeholder('0.00'),
+
+                    TextInput::make('compound_sv_tier2_price')
+                        ->label('Tier 2 price (strong compound)')
+                        ->helperText('SPH > 4.00 OR CYL > 2.00 (up to SPH 9.00 / CYL 4.00)')
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.01)
+                        ->suffix($currency)
+                        ->placeholder('0.00'),
+                ]),
+
+            Section::make('SPH & CYL Diopter Values')
+                ->description('Click any group below to view and edit its diopter values and per-value add-on prices. These apply when only SPH or only CYL is present (not compound).')
+                ->schema([
+                    Grid::make(2)
+                        ->schema(collect(OpticalRxDiopterValue::groupOptions())
+                            ->map(fn (string $label, string $group): \Filament\Schemas\Components\Component => \Filament\Schemas\Components\Section::make($label)
+                                ->description(fn () => OpticalRxDiopterValue::query()
+                                        ->where('group', $group)
+                                        ->count() . ' values configured')
+                                ->schema([
+                                    \Filament\Schemas\Components\Actions::make([
+                                        \Filament\Actions\Action::make('open_' . $group)
+                                            ->label('Edit values')
+                                            ->icon('heroicon-o-pencil')
+                                            ->color('gray')
+                                            ->size('sm')
+                                            ->modalHeading("Configure: {$label}")
+                                            ->modalDescription('Built-in values (greyed out) cannot be removed. Set price to 0 to disable the add-on for that value.')
+                                            ->modalWidth('2xl')
+                                            ->fillForm(fn (): array => ['rows' => OpticalRxConfig::rowsForForm($group)])
+                                            ->form([
+                                                Repeater::make('rows')
+                                                    ->label(false)
+                                                    ->schema($this->diopterRepeaterSchema($currency))
+                                                    ->defaultItems(0)
+                                                    ->addActionLabel('Add diopter value')
+                                                    ->deletable(fn (array $state): bool => ! ($state['is_default'] ?? false))
+                                                    ->reorderable(false)
+                                                    ->columnSpanFull(),
+                                            ])
+                                            ->action(function (array $data) use ($group): void {
+                                                OpticalRxConfig::saveFromForm([$group => $data['rows']]);
+                                                Notification::make()->success()->title('Values saved')->send();
+                                            }),
+                                    ]),
+                                ])
+                                ->columnSpan(1))
+                            ->values()
+                            ->all()),
+                ]),
+        ]);
+    }
+
     public function content(Schema $schema): Schema
     {
-        return $schema
-            ->components([
-                $this->getFormContentComponent(),
-            ]);
+        return $schema->components([
+            $this->getFormContentComponent(),
+        ]);
     }
 
     protected function getFormContentComponent(): Component
@@ -152,7 +214,7 @@ class LensRxValuesSettingsPage extends Page
     {
         return [
             Action::make('save')
-                ->label('Save')
+                ->label('Save compound prices')
                 ->submit('save')
                 ->keyBindings(['mod+s']),
         ];
