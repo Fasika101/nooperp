@@ -15,8 +15,11 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Carbon\Carbon;
+use Filament\Forms\Components\DatePicker;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class OrderItemResource extends Resource
 {
@@ -119,7 +122,62 @@ class OrderItemResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('item_type')
+                    ->label('Item Type')
+                    ->options([
+                        'frames' => 'Frames Only',
+                        'lenses' => 'Lenses Only',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'frames' => $query->where(function (Builder $q): void {
+                                $q->whereNull('optical_meta')
+                                    ->orWhere('optical_meta', '[]');
+                            }),
+                            'lenses' => $query->whereNotNull('optical_meta')
+                                ->where('optical_meta', '!=', '[]'),
+                            default => $query,
+                        };
+                    }),
+                Tables\Filters\Filter::make('date_range')
+                    ->label('Date range')
+                    ->schema([
+                        DatePicker::make('from')
+                            ->label('From')
+                            ->native(false),
+                        DatePicker::make('until')
+                            ->label('Until')
+                            ->native(false),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $from  = $data['from'] ?? null;
+                        $until = $data['until'] ?? null;
+
+                        if (! filled($from) || ! filled($until)) {
+                            return $query;
+                        }
+
+                        return $query->whereBetween('created_at', [
+                            Carbon::parse($from)->startOfDay(),
+                            Carbon::parse($until)->endOfDay(),
+                        ]);
+                    })
+                    ->indicateUsing(function (array $state): array {
+                        $from  = $state['from'] ?? null;
+                        $until = $state['until'] ?? null;
+
+                        if (! filled($from) || ! filled($until)) {
+                            return [];
+                        }
+
+                        return [
+                            Tables\Filters\Indicator::make(
+                                Carbon::parse($from)->toFormattedDateString()
+                                .' – '
+                                .Carbon::parse($until)->toFormattedDateString(),
+                            ),
+                        ];
+                    }),
             ])
             ->actions([
                 Action::make('viewReceipt')
