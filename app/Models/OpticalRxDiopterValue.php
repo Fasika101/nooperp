@@ -14,6 +14,8 @@ class OpticalRxDiopterValue extends Model
 
     public const GROUP_PROGRESSIVE_CYL = 'progressive_cyl';
 
+    public const GROUP_PROGRESSIVE_ADD = 'progressive_add';
+
     protected $fillable = [
         'group',
         'value',
@@ -41,6 +43,7 @@ class OpticalRxDiopterValue extends Model
             self::GROUP_SINGLE_CYL => 'Single vision — Cylinder (CYL)',
             self::GROUP_PROGRESSIVE_SPH => 'Progressive — Sphere (SPH)',
             self::GROUP_PROGRESSIVE_CYL => 'Progressive — Cylinder (CYL)',
+            self::GROUP_PROGRESSIVE_ADD => 'Progressive — ADD (near power)',
         ];
     }
 

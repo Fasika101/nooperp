@@ -56,7 +56,9 @@ class OpticalRxPricing
         ?string $odCyl,
         ?string $osSph,
         ?string $osCyl,
+        ?string $odAdd = null,
+        ?string $osAdd = null,
     ): float {
-        return OpticalRxConfig::prescriptionAddOn($vision, $odSph, $odCyl, $osSph, $osCyl);
+        return OpticalRxConfig::prescriptionAddOn($vision, $odSph, $odCyl, $osSph, $osCyl, $odAdd, $osAdd);
     }
 }

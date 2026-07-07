@@ -1676,14 +1676,7 @@ class PosPage extends Page
 
     public function getOpticalRxAddOptions(): array
     {
-        $opts = ['-' => '—'];
-        for ($i = 1; $i <= 12; $i++) {
-            $v = round($i * 0.25, 2);
-            $k = number_format($v, 2, '.', '');
-            $opts[$k] = '+'.$k;
-        }
-
-        return $opts;
+        return OpticalRxOptions::addOptions();
     }
 
     public function getOpticalRxAxisOptions(): array
@@ -1718,6 +1711,8 @@ class PosPage extends Page
             $this->od_cyl,
             $this->os_sph,
             $this->os_cyl,
+            $this->opticalVision === 'progressive' ? $this->od_add : null,
+            $this->opticalVision === 'progressive' ? $this->os_add : null,
         );
 
         // Sentinel -1.0 means compound is beyond tiers — signal to blade as null

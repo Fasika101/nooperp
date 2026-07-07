@@ -45,6 +45,10 @@ class LensRxValuesSettingsPage extends Page
         $this->form->fill([
             'compound_sv_tier1_price' => OpticalRxConfig::getCompoundSvTier1Price() ?: '',
             'compound_sv_tier2_price' => OpticalRxConfig::getCompoundSvTier2Price() ?: '',
+            'progressive_add_tier1_price' => OpticalRxConfig::getProgressiveAddTier1Price() ?: '',
+            'progressive_add_tier2_price' => OpticalRxConfig::getProgressiveAddTier2Price() ?: '',
+            'progressive_negative_sph_price' => OpticalRxConfig::getProgressiveNegativeSphPrice() ?: '',
+            'progressive_cyl_price' => OpticalRxConfig::getProgressiveCylPrice() ?: '',
         ]);
     }
 
@@ -54,8 +58,12 @@ class LensRxValuesSettingsPage extends Page
 
         Setting::set(OpticalRxConfig::COMPOUND_SV_TIER1_SETTING, (float) ($data['compound_sv_tier1_price'] ?? 0));
         Setting::set(OpticalRxConfig::COMPOUND_SV_TIER2_SETTING, (float) ($data['compound_sv_tier2_price'] ?? 0));
+        Setting::set(OpticalRxConfig::PROGRESSIVE_ADD_TIER1_SETTING, (float) ($data['progressive_add_tier1_price'] ?? 0));
+        Setting::set(OpticalRxConfig::PROGRESSIVE_ADD_TIER2_SETTING, (float) ($data['progressive_add_tier2_price'] ?? 0));
+        Setting::set(OpticalRxConfig::PROGRESSIVE_NEGATIVE_SPH_SETTING, (float) ($data['progressive_negative_sph_price'] ?? 0));
+        Setting::set(OpticalRxConfig::PROGRESSIVE_CYL_SETTING, (float) ($data['progressive_cyl_price'] ?? 0));
 
-        Notification::make()->success()->title('Compound prices saved')->send();
+        Notification::make()->success()->title('Lens pricing saved')->send();
     }
 
     protected function getHeaderActions(): array
@@ -63,6 +71,10 @@ class LensRxValuesSettingsPage extends Page
         $currency = Setting::getDefaultCurrency();
 
         return collect(OpticalRxDiopterValue::groupOptions())
+            ->filter(fn (string $label, string $group): bool => in_array($group, [
+                OpticalRxDiopterValue::GROUP_SINGLE_SPH,
+                OpticalRxDiopterValue::GROUP_SINGLE_CYL,
+            ], true))
             ->map(fn (string $label, string $group): Action => Action::make('configure_' . $group)
                 ->label($label)
                 ->icon('heroicon-o-pencil-square')
@@ -86,6 +98,26 @@ class LensRxValuesSettingsPage extends Page
                 }))
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array<int, TextInput|Hidden>
+     */
+    protected function addValueRepeaterSchema(): array
+    {
+        return [
+            Hidden::make('is_default')
+                ->default(false),
+            TextInput::make('value')
+                ->label('ADD power')
+                ->required()
+                ->disabled(fn (Get $get): bool => (bool) $get('is_default'))
+                ->dehydrated()
+                ->helperText(fn (Get $get): ?string => $get('is_default')
+                    ? 'Built-in value — cannot be removed.'
+                    : 'Positive value up to +10.00, e.g. 4.25')
+                ->placeholder('e.g. 4.25'),
+        ];
     }
 
     /**
@@ -126,6 +158,79 @@ class LensRxValuesSettingsPage extends Page
         $currency = Setting::getDefaultCurrency();
 
         return $schema->components([
+            Section::make('Progressive — Lens Pricing')
+                ->description('Progressive add-on is driven by ADD power. Flat price for +SPH/plano with ADD; stacked price when −SPH or CYL is present with ADD.')
+                ->columns(2)
+                ->schema([
+                    TextInput::make('progressive_add_tier1_price')
+                        ->label('ADD tier 1 (0 to +3.00)')
+                        ->helperText('Plano/+SPH with ADD up to +3.00, or ADD-only progressive')
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.01)
+                        ->suffix($currency)
+                        ->placeholder('3600.00'),
+
+                    TextInput::make('progressive_add_tier2_price')
+                        ->label('ADD tier 2 (above +3.00)')
+                        ->helperText('ADD above +3.00, or +SPH and ADD both above +3.00')
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.01)
+                        ->suffix($currency)
+                        ->placeholder('4500.00'),
+
+                    TextInput::make('progressive_negative_sph_price')
+                        ->label('Negative SPH price')
+                        ->helperText('Any −SPH; stacks with ADD tier when ADD is present')
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.01)
+                        ->suffix($currency)
+                        ->placeholder('2900.00'),
+
+                    TextInput::make('progressive_cyl_price')
+                        ->label('CYL price')
+                        ->helperText('Any CYL; stacks with ADD tier when ADD is present')
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.01)
+                        ->suffix($currency)
+                        ->placeholder('2900.00'),
+                ]),
+
+            Section::make('Progressive — ADD values (POS dropdown)')
+                ->description('ADD powers shown in POS for progressive prescriptions (+0.25 to +10.00 by default). Built-in values cannot be removed; add custom values as needed. Pricing still uses the ADD tiers above.')
+                ->schema([
+                    \Filament\Schemas\Components\Actions::make([
+                        Action::make('open_progressive_add')
+                            ->label('Edit ADD values')
+                            ->icon('heroicon-o-pencil')
+                            ->color('gray')
+                            ->size('sm')
+                            ->modalHeading('Configure: Progressive — ADD (near power)')
+                            ->modalDescription('Values appear in the POS ADD column. Use two decimals, e.g. 4.25 or 10.00. Built-in values (greyed out) cannot be removed.')
+                            ->modalWidth('2xl')
+                            ->fillForm(fn (): array => ['rows' => OpticalRxConfig::addRowsForForm()])
+                            ->form([
+                                Repeater::make('rows')
+                                    ->label(false)
+                                    ->schema($this->addValueRepeaterSchema())
+                                    ->defaultItems(0)
+                                    ->addActionLabel('Add ADD value')
+                                    ->deletable(fn (array $state): bool => ! ($state['is_default'] ?? false))
+                                    ->reorderable(false)
+                                    ->columnSpanFull(),
+                            ])
+                            ->action(function (array $data): void {
+                                OpticalRxConfig::saveFromForm([
+                                    OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD => $data['rows'],
+                                ]);
+                                Notification::make()->success()->title('ADD values saved')->send();
+                            }),
+                    ]),
+                ]),
+
             Section::make('Single Vision — Compound Pricing')
                 ->description('When a prescription has both SPH and CYL, the system uses a flat price based on these tiers instead of per-value lookup.')
                 ->columns(2)
@@ -149,11 +254,15 @@ class LensRxValuesSettingsPage extends Page
                         ->placeholder('0.00'),
                 ]),
 
-            Section::make('SPH & CYL Diopter Values')
-                ->description('Click any group below to view and edit its diopter values and per-value add-on prices. These apply when only SPH or only CYL is present (not compound).')
+            Section::make('SPH & CYL Diopter Values (single vision)')
+                ->description('Per-value add-on prices for single vision when only SPH or only CYL is present (not compound). Progressive pricing is configured above.')
                 ->schema([
                     Grid::make(2)
                         ->schema(collect(OpticalRxDiopterValue::groupOptions())
+                            ->filter(fn (string $label, string $group): bool => in_array($group, [
+                                OpticalRxDiopterValue::GROUP_SINGLE_SPH,
+                                OpticalRxDiopterValue::GROUP_SINGLE_CYL,
+                            ], true))
                             ->map(fn (string $label, string $group): \Filament\Schemas\Components\Component => \Filament\Schemas\Components\Section::make($label)
                                 ->description(fn () => OpticalRxDiopterValue::query()
                                         ->where('group', $group)
@@ -214,7 +323,7 @@ class LensRxValuesSettingsPage extends Page
     {
         return [
             Action::make('save')
-                ->label('Save compound prices')
+                ->label('Save lens pricing')
                 ->submit('save')
                 ->keyBindings(['mod+s']),
         ];

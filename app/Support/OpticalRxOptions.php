@@ -27,6 +27,24 @@ class OpticalRxOptions
     }
 
     /**
+     * Default progressive ADD powers seeded for the POS dropdown (+0.25 to +10.00).
+     *
+     * @return list<string>
+     */
+    public static function progressiveAddKeys(): array
+    {
+        return self::positiveQuarterDiopterKeys(0.25, 10.0);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function addOptions(): array
+    {
+        return OpticalRxConfig::addOptions();
+    }
+
+    /**
      * @return array<string, string> value => label (for &lt;select&gt; options)
      */
     public static function sphereOptions(string $vision): array
@@ -62,6 +80,22 @@ class OpticalRxOptions
     public static function quarterDiopterKeys(float $min, float $max): array
     {
         $keys = [self::UNKNOWN];
+        $steps = (int) round(($max - $min) / 0.25);
+
+        for ($n = 0; $n <= $steps; $n++) {
+            $v = round($min + ($n * 0.25), 2);
+            $keys[] = number_format($v, 2, '.', '');
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function positiveQuarterDiopterKeys(float $min, float $max): array
+    {
+        $keys = [];
         $steps = (int) round(($max - $min) / 0.25);
 
         for ($n = 0; $n <= $steps; $n++) {

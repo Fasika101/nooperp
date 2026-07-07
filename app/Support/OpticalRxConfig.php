@@ -15,6 +15,18 @@ class OpticalRxConfig
     public const COMPOUND_SV_TIER1_SETTING = 'optical_sv_compound_tier1_price';
     public const COMPOUND_SV_TIER2_SETTING = 'optical_sv_compound_tier2_price';
 
+    /** Setting keys for progressive lens add-on prices */
+    public const PROGRESSIVE_ADD_TIER1_SETTING = 'optical_pg_add_tier1_price';
+    public const PROGRESSIVE_ADD_TIER2_SETTING = 'optical_pg_add_tier2_price';
+    public const PROGRESSIVE_NEGATIVE_SPH_SETTING = 'optical_pg_negative_sph_price';
+    public const PROGRESSIVE_CYL_SETTING = 'optical_pg_cyl_price';
+
+    /** ADD boundary (diopters): up to this value uses tier 1, above uses tier 2 */
+    public const PROGRESSIVE_ADD_TIER1_MAX = 3.00;
+
+    /** +SPH boundary for flat plus-progressive pricing paired with ADD */
+    public const PROGRESSIVE_PLUS_SPH_TIER1_MAX = 3.00;
+
     /**
      * Returned from prescriptionAddOn() when single-vision compound values are
      * beyond both tiers — the cashier must enter a custom price in the POS.
@@ -37,11 +49,11 @@ class OpticalRxConfig
 
     public static function ensureSeeded(): void
     {
-        if (OpticalRxDiopterValue::query()->exists()) {
-            return;
+        if (! OpticalRxDiopterValue::query()->exists()) {
+            self::seedDefaults();
         }
 
-        self::seedDefaults();
+        self::ensureProgressiveAddSeeded();
     }
 
     public static function clearCache(): void
@@ -86,6 +98,16 @@ class OpticalRxConfig
         return $all[self::cylinderGroupForVision($vision)] ?? [OpticalRxOptions::UNKNOWN => '—'];
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public static function addOptions(): array
+    {
+        $all = self::allOptionsCached();
+
+        return $all[OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD] ?? [OpticalRxOptions::UNKNOWN => '—'];
+    }
+
     public static function priceForGroupValue(string $group, ?string $value): float
     {
         if ($value === null || $value === '' || $value === OpticalRxOptions::UNKNOWN) {
@@ -118,6 +140,26 @@ class OpticalRxConfig
         return (float) Setting::get(self::COMPOUND_SV_TIER2_SETTING, 0);
     }
 
+    public static function getProgressiveAddTier1Price(): float
+    {
+        return (float) Setting::get(self::PROGRESSIVE_ADD_TIER1_SETTING, 3600);
+    }
+
+    public static function getProgressiveAddTier2Price(): float
+    {
+        return (float) Setting::get(self::PROGRESSIVE_ADD_TIER2_SETTING, 4500);
+    }
+
+    public static function getProgressiveNegativeSphPrice(): float
+    {
+        return (float) Setting::get(self::PROGRESSIVE_NEGATIVE_SPH_SETTING, 2900);
+    }
+
+    public static function getProgressiveCylPrice(): float
+    {
+        return (float) Setting::get(self::PROGRESSIVE_CYL_SETTING, 2900);
+    }
+
     private static function isBlank(?string $val): bool
     {
         if ($val === null || $val === '' || $val === OpticalRxOptions::UNKNOWN) {
@@ -132,10 +174,145 @@ class OpticalRxConfig
         return self::isBlank($val) ? 0.0 : abs((float) $val);
     }
 
+    private static function signedFloat(?string $val): ?float
+    {
+        if (self::isBlank($val)) {
+            return null;
+        }
+
+        return (float) $val;
+    }
+
+    private static function hasNegativeSphere(?string $odSph, ?string $osSph): bool
+    {
+        foreach ([$odSph, $osSph] as $sph) {
+            $signed = self::signedFloat($sph);
+            if ($signed !== null && $signed < 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function hasCylinder(?string $odCyl, ?string $osCyl): bool
+    {
+        return ! self::isBlank($odCyl) || ! self::isBlank($osCyl);
+    }
+
+    private static function hasAddPower(?string $odAdd, ?string $osAdd): bool
+    {
+        return ! self::isBlank($odAdd) || ! self::isBlank($osAdd);
+    }
+
+    /**
+     * Worst-eye ADD used for progressive tier lookup (higher ADD wins).
+     */
+    private static function effectiveAddPower(?string $odAdd, ?string $osAdd): float
+    {
+        return max(self::absFloat($odAdd), self::absFloat($osAdd));
+    }
+
+    /**
+     * Highest non-negative SPH across both eyes (plano counts as 0).
+     */
+    private static function effectivePlusSphere(?string $odSph, ?string $osSph): float
+    {
+        $max = 0.0;
+
+        foreach ([$odSph, $osSph] as $sph) {
+            $signed = self::signedFloat($sph);
+            if ($signed !== null && $signed >= 0) {
+                $max = max($max, $signed);
+            }
+        }
+
+        return $max;
+    }
+
+    private static function progressiveAddTierPrice(float $effectiveAdd): float
+    {
+        return $effectiveAdd > self::PROGRESSIVE_ADD_TIER1_MAX
+            ? self::getProgressiveAddTier2Price()
+            : self::getProgressiveAddTier1Price();
+    }
+
+    /**
+     * Flat plus-progressive price when +SPH/plano is paired with ADD (not stacked).
+     */
+    private static function progressivePlusFlatPrice(float $effectivePlusSph, float $effectiveAdd): float
+    {
+        if ($effectivePlusSph > self::PROGRESSIVE_PLUS_SPH_TIER1_MAX
+            && $effectiveAdd > self::PROGRESSIVE_ADD_TIER1_MAX) {
+            return self::getProgressiveAddTier2Price();
+        }
+
+        if ($effectiveAdd > self::PROGRESSIVE_ADD_TIER1_MAX) {
+            return self::getProgressiveAddTier2Price();
+        }
+
+        return self::getProgressiveAddTier1Price();
+    }
+
+    /**
+     * Progressive lens diopter add-on (pair price).
+     *
+     *   ADD only (plano/+SPH 0–+3)           → tier 1 (default 3600)
+     *   ADD > +3 (or +SPH > +3 with ADD > +3) → tier 2 (default 4500)
+     *   −SPH alone                            → 2900
+     *   CYL alone                             → 2900
+     *   (−SPH or CYL) + ADD                   → 2900 + ADD tier price (stacked)
+     *   +SPH + ADD (no −SPH/CYL)              → flat ADD tier price (not stacked)
+     */
+    private static function progressivePrescriptionAddOn(
+        ?string $odSph,
+        ?string $odCyl,
+        ?string $osSph,
+        ?string $osCyl,
+        ?string $odAdd,
+        ?string $osAdd,
+    ): float {
+        $hasAdd = self::hasAddPower($odAdd, $osAdd);
+        $hasNegSph = self::hasNegativeSphere($odSph, $osSph);
+        $hasCyl = self::hasCylinder($odCyl, $osCyl);
+        $hasSph = ! self::isBlank($odSph) || ! self::isBlank($osSph);
+
+        if (! $hasAdd && ! $hasSph && ! $hasCyl) {
+            return 0.0;
+        }
+
+        $effectiveAdd = self::effectiveAddPower($odAdd, $osAdd);
+        $addTierPrice = self::progressiveAddTierPrice($effectiveAdd);
+
+        if ($hasAdd && ($hasNegSph || $hasCyl)) {
+            $base = $hasCyl
+                ? self::getProgressiveCylPrice()
+                : self::getProgressiveNegativeSphPrice();
+
+            return round($base + $addTierPrice, 2);
+        }
+
+        if ($hasCyl) {
+            return round(self::getProgressiveCylPrice(), 2);
+        }
+
+        if ($hasNegSph) {
+            return round(self::getProgressiveNegativeSphPrice(), 2);
+        }
+
+        if ($hasAdd) {
+            $effectivePlusSph = self::effectivePlusSphere($odSph, $osSph);
+
+            return round(self::progressivePlusFlatPrice($effectivePlusSph, $effectiveAdd), 2);
+        }
+
+        return 0.0;
+    }
+
     /**
      * Returns the diopter add-on price for a prescription.
      *
-     * For progressive vision: sum of both eyes (unchanged).
+     * For progressive vision: ADD-driven tiers with flat or stacked pricing (see progressivePrescriptionAddOn).
      *
      * For single vision:
      *   - SPH only  → higher of both eyes' SPH prices (one pair price)
@@ -151,14 +328,11 @@ class OpticalRxConfig
         ?string $odCyl,
         ?string $osSph,
         ?string $osCyl,
+        ?string $odAdd = null,
+        ?string $osAdd = null,
     ): float {
-        // Progressive: keep existing per-eye additive logic (unchanged)
-        if ($vision !== 'single') {
-            return round(
-                self::eyeAddOn($vision, $odSph, $odCyl)
-                + self::eyeAddOn($vision, $osSph, $osCyl),
-                2,
-            );
+        if ($vision === 'progressive') {
+            return self::progressivePrescriptionAddOn($odSph, $odCyl, $osSph, $osCyl, $odAdd, $osAdd);
         }
 
         // ── Single vision ────────────────────────────────────────────────────
@@ -232,16 +406,26 @@ class OpticalRxConfig
      */
     public static function saveFromForm(array $groups): void
     {
-        foreach (OpticalRxDiopterValue::groups() as $group) {
-            $rows = $groups[$group] ?? [];
+        foreach ($groups as $group => $rows) {
+            if (! in_array($group, OpticalRxDiopterValue::groups(), true)) {
+                continue;
+            }
+
             $submittedValues = [];
             $seen = [];
 
             foreach ($rows as $index => $row) {
-                $value = self::normalizeDiopterValue($row['value'] ?? '');
+                $value = $group === OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD
+                    ? self::normalizeAddValue($row['value'] ?? '')
+                    : self::normalizeDiopterValue($row['value'] ?? '');
+
                 if ($value === null) {
+                    $message = $group === OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD
+                        ? __('Enter a valid ADD value (0.00 to 10.00, e.g. 2.50).')
+                        : __('Enter a valid diopter value (e.g. -6.00 or 7.25).');
+
                     throw ValidationException::withMessages([
-                        "{$group}.{$index}.value" => __('Enter a valid diopter value (e.g. -6.00 or 7.25).'),
+                        "{$group}.{$index}.value" => $message,
                     ]);
                 }
 
@@ -263,7 +447,9 @@ class OpticalRxConfig
                 }
 
                 $isDefault = $existing?->is_default ?? (bool) ($row['is_default'] ?? false);
-                $price = is_numeric($row['price'] ?? null) ? round((float) $row['price'], 2) : 0.0;
+                $price = $group === OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD
+                    ? 0.0
+                    : (is_numeric($row['price'] ?? null) ? round((float) $row['price'], 2) : 0.0);
 
                 OpticalRxDiopterValue::query()->updateOrCreate(
                     ['group' => $group, 'value' => $value],
@@ -299,6 +485,21 @@ class OpticalRxConfig
         }
 
         return number_format((float) $normalized, 2, '.', '');
+    }
+
+    public static function normalizeAddValue(mixed $raw): ?string
+    {
+        $normalized = self::normalizeDiopterValue($raw);
+        if ($normalized === null) {
+            return null;
+        }
+
+        $value = (float) $normalized;
+        if ($value < 0 || $value > 10.0) {
+            return null;
+        }
+
+        return $normalized;
     }
 
     public static function sortOrderForValue(string $value): int
@@ -340,8 +541,33 @@ class OpticalRxConfig
             OpticalRxDiopterValue::GROUP_PROGRESSIVE_SPH => OpticalRxOptions::sphereOptions('progressive'),
             OpticalRxDiopterValue::GROUP_SINGLE_CYL,
             OpticalRxDiopterValue::GROUP_PROGRESSIVE_CYL => OpticalRxOptions::cylinderOptions(),
+            OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD => OpticalRxOptions::optionsFromKeys(
+                array_merge([OpticalRxOptions::UNKNOWN], OpticalRxOptions::progressiveAddKeys()),
+            ),
             default => [OpticalRxOptions::UNKNOWN => '—'],
         };
+    }
+
+    public static function ensureProgressiveAddSeeded(): void
+    {
+        if (OpticalRxDiopterValue::query()
+            ->where('group', OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD)
+            ->exists()) {
+            return;
+        }
+
+        foreach (OpticalRxOptions::progressiveAddKeys() as $value) {
+            OpticalRxDiopterValue::query()->updateOrCreate(
+                ['group' => OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD, 'value' => $value],
+                [
+                    'price' => 0,
+                    'sort_order' => self::sortOrderForValue($value),
+                    'is_default' => true,
+                ],
+            );
+        }
+
+        self::clearCache();
     }
 
     public static function seedDefaults(): void
@@ -353,11 +579,14 @@ class OpticalRxConfig
             OpticalRxDiopterValue::GROUP_PROGRESSIVE_SPH => OpticalRxOptions::pricedSphereKeys('progressive'),
             OpticalRxDiopterValue::GROUP_SINGLE_CYL => OpticalRxOptions::pricedCylinderKeys(),
             OpticalRxDiopterValue::GROUP_PROGRESSIVE_CYL => OpticalRxOptions::pricedCylinderKeys(),
+            OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD => OpticalRxOptions::progressiveAddKeys(),
         ];
 
         foreach ($definitions as $group => $values) {
             foreach ($values as $value) {
-                $price = $legacyPrices[$group][$value] ?? 0.0;
+                $price = $group === OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD
+                    ? 0.0
+                    : ($legacyPrices[$group][$value] ?? 0.0);
 
                 OpticalRxDiopterValue::query()->updateOrCreate(
                     ['group' => $group, 'value' => $value],
@@ -371,6 +600,26 @@ class OpticalRxConfig
         }
 
         self::clearCache();
+    }
+
+    /**
+     * @return list<array{value: string, is_default: bool}>
+     */
+    public static function addRowsForForm(): array
+    {
+        self::ensureSeeded();
+
+        return OpticalRxDiopterValue::query()
+            ->where('group', OpticalRxDiopterValue::GROUP_PROGRESSIVE_ADD)
+            ->orderBy('sort_order')
+            ->orderBy('value')
+            ->get()
+            ->map(fn (OpticalRxDiopterValue $row): array => [
+                'value' => $row->value,
+                'is_default' => $row->is_default,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
