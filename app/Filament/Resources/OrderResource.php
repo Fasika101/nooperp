@@ -73,7 +73,7 @@ class OrderResource extends Resource
                             ->label('Commission mode')
                             ->options([
                                 Affiliate::COMMISSION_DEDUCT_PERCENT => 'Deduct % (customer pays pre-affiliate total)',
-                                Affiliate::COMMISSION_ADD_PERCENT => 'Add % to sale (customer pays base + add-on)',
+                                Affiliate::COMMISSION_ADD_PERCENT => 'Add % (affiliate share of customer total)',
                             ])
                             ->disabled(),
                         TextInput::make('affiliate_commission_rate')

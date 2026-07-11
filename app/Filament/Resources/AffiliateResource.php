@@ -271,7 +271,7 @@ class AffiliateResource extends Resource
     {
         return [
             Affiliate::COMMISSION_DEDUCT_PERCENT => 'Deduct % from sale (customer pays pre-affiliate total; you track commission)',
-            Affiliate::COMMISSION_ADD_PERCENT => 'Add % to sale (customer pays base + commission)',
+            Affiliate::COMMISSION_ADD_PERCENT => 'Add % to sale (affiliate share of customer total; shop keeps base)',
         ];
     }
 }

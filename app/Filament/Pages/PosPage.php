@@ -23,6 +23,7 @@ use App\Models\RepairType;
 use App\Models\Setting;
 use App\Models\TaxType;
 use App\Services\PosTelegramService;
+use App\Support\AffiliateCommission;
 use App\Support\OpticalRxOptions;
 use App\Support\OpticalRxPricing;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
@@ -64,6 +65,12 @@ class PosPage extends Page
     public string $search = '';
 
     public ?int $categoryId = null;
+
+    /** Product cards shown per batch in the POS grid (cashier-adjustable) */
+    public int $productsPerPage = 20;
+
+    /** Current render limit; grows when the cashier clicks "Load more" */
+    public int $productsLimit = 20;
 
     public array $posData = [
         'discountAmount' => 0,
@@ -173,8 +180,47 @@ class PosPage extends Page
         $this->branchId = $this->getResolvedBranchId();
     }
 
+    /** @var \Illuminate\Support\Collection<int, Product>|null Memoized filtered products for this request */
+    protected ?\Illuminate\Support\Collection $filteredProductsCache = null;
+
     public function getProducts()
     {
+        return $this->getFilteredProducts()->take(max(1, $this->productsLimit));
+    }
+
+    public function getProductsTotalCount(): int
+    {
+        return $this->getFilteredProducts()->count();
+    }
+
+    public function loadMoreProducts(): void
+    {
+        $this->productsLimit += max(1, $this->productsPerPage);
+    }
+
+    public function updatedProductsPerPage(mixed $value): void
+    {
+        $perPage = (int) $value;
+        $this->productsPerPage = in_array($perPage, [20, 40, 60, 100], true) ? $perPage : 20;
+        $this->productsLimit = $this->productsPerPage;
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->productsLimit = $this->productsPerPage;
+    }
+
+    public function updatedCategoryId(): void
+    {
+        $this->productsLimit = $this->productsPerPage;
+    }
+
+    protected function getFilteredProducts(): \Illuminate\Support\Collection
+    {
+        if ($this->filteredProductsCache !== null) {
+            return $this->filteredProductsCache;
+        }
+
         $with = ['category', 'attachedProductOptions', 'material', 'size', 'color'];
 
         if ($this->branchId) {
@@ -222,10 +268,10 @@ class PosPage extends Page
                 return $p->availableColorOptions($this->branchId)->isNotEmpty()
                     || $p->availableSizeOptions($this->branchId)->isNotEmpty()
                     || $p->getStockForBranch($this->branchId) > 0;
-            });
+            })->values();
         }
 
-        return $products;
+        return $this->filteredProductsCache = $products;
     }
 
     /**
@@ -833,27 +879,31 @@ class PosPage extends Page
         if (! $this->affiliateApplied || ! $this->affiliateId) {
             return 0.0;
         }
-        $base = $this->getPosOrderBaseTotal();
+
         $rate = (float) $this->affiliateCommissionRate;
         if ($rate <= 0) {
             return 0.0;
         }
 
-        return round($base * ($rate / 100), 2);
+        return AffiliateCommission::commissionAmount(
+            $this->getPosOrderBaseTotal(),
+            $this->affiliateCommissionType,
+            $rate,
+        );
     }
 
     public function getFinalTotal(): float
     {
         $base = $this->getPosOrderBaseTotal();
-        if (
-            $this->affiliateApplied
-            && $this->affiliateId
-            && $this->affiliateCommissionType === Affiliate::COMMISSION_ADD_PERCENT
-        ) {
-            return round($base + $this->getAffiliateCommissionAmount(), 2);
+        if (! $this->affiliateApplied || ! $this->affiliateId) {
+            return $base;
         }
 
-        return $base;
+        return AffiliateCommission::customerTotal(
+            $base,
+            $this->affiliateCommissionType,
+            (float) $this->affiliateCommissionRate,
+        );
     }
 
     public function getAffiliatesForModal()
@@ -1175,6 +1225,7 @@ class PosPage extends Page
         }
 
         $this->posData['paymentTypeId'] = null;
+        $this->productsLimit = $this->productsPerPage;
 
         if ($this->cart !== []) {
             $this->cart = [];

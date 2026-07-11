@@ -316,6 +316,15 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                         @foreach($this->getCategories() as $category)
                             <button type="button" wire:click="$set('categoryId', {{ $category->id }})" class="pos-cat-btn {{ $categoryId == $category->id ? 'active' : '' }}">{{ $category->name }}</button>
                         @endforeach
+                        <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: rgb(107 114 128); white-space: nowrap;">
+                            Show
+                            <select wire:model.live="productsPerPage" style="font-size: 0.75rem; padding: 0.2rem 1.5rem 0.2rem 0.5rem; border-radius: 0.375rem;">
+                                <option value="20">20</option>
+                                <option value="40">40</option>
+                                <option value="60">60</option>
+                                <option value="100">100</option>
+                            </select>
+                        </span>
                     </div>
 
                     {{-- Product grid --}}
@@ -356,6 +365,18 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                 </div>
                             @endforelse
                         </div>
+                        @php
+                            $posProductsTotal = $this->getProductsTotalCount();
+                            $posProductsShown = min($productsLimit, $posProductsTotal);
+                        @endphp
+                        @if($posProductsTotal > $posProductsShown)
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.375rem; padding: 0.875rem 0 0.5rem;">
+                                <span style="font-size: 0.75rem; color: rgb(107 114 128);">Showing {{ $posProductsShown }} of {{ $posProductsTotal }} products</span>
+                                <x-filament::button type="button" size="sm" color="gray" wire:click="loadMoreProducts">
+                                    Load {{ min($productsPerPage, $posProductsTotal - $posProductsShown) }} more
+                                </x-filament::button>
+                            </div>
+                        @endif
                     </div>
                 @elseif($posAreaTab === 'customize')
                     <div class="pos-customize">
@@ -785,7 +806,7 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                 <div class="row">
                                     <span><strong>{{ $this->getSelectedAffiliate()->name }}</strong>
                                         @if($affiliateCommissionType === 'add_percent')
-                                            · Add {{ rtrim(rtrim(number_format((float) $affiliateCommissionRate, 2, '.', ''), '0'), '.') }}% to sale
+                                            · Add {{ rtrim(rtrim(number_format((float) $affiliateCommissionRate, 2, '.', ''), '0'), '.') }}% of customer total
                                         @else
                                             · Deduct {{ rtrim(rtrim(number_format((float) $affiliateCommissionRate, 2, '.', ''), '0'), '.') }}% (tracked)
                                         @endif
@@ -857,7 +878,7 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                             <div class="pos-calc-row">
                                 <span>
                                     @if($affiliateCommissionType === 'add_percent')
-                                        Affiliate add-on
+                                        Affiliate share ({{ rtrim(rtrim(number_format((float) $affiliateCommissionRate, 2, '.', ''), '0'), '.') }}% of total)
                                     @else
                                         Affiliate commission (tracked)
                                     @endif
@@ -994,7 +1015,7 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                         <label>Mode</label>
                         <select wire:model.live="affiliateCommissionType">
                             <option value="deduct_percent">Deduct % from sale (customer pays normal total)</option>
-                            <option value="add_percent">Add % to sale (customer pays extra)</option>
+                            <option value="add_percent">Add % (affiliate share of customer total)</option>
                         </select>
                     </div>
                     <div class="pos-cart-field" style="flex: 1;">
