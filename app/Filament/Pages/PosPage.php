@@ -19,6 +19,7 @@ use App\Models\Prescription;
 use App\Models\Product;
 use App\Models\ProductOption;
 use App\Models\ProductVariant;
+use App\Models\LensSolutionType;
 use App\Models\RepairType;
 use App\Models\Setting;
 use App\Models\TaxType;
@@ -117,7 +118,7 @@ class PosPage extends Page
 
     public string $newAffiliateCommissionType = 'deduct_percent';
 
-    /** products | customize | repair */
+    /** products | customize | repair | solution */
     public string $posAreaTab = 'products';
 
     /** customize: null | no_rx | with_rx */
@@ -171,6 +172,10 @@ class PosPage extends Page
     public ?int $repairTypeId = null;
 
     public string $repairPrice = '';
+
+    public ?int $lensSolutionTypeId = null;
+
+    public string $lensSolutionPrice = '';
 
     /** Custom add-on price entered by cashier when compound Rx is beyond both tiers */
     public string $customCompoundPrice = '';
@@ -801,7 +806,7 @@ class PosPage extends Page
 
     public function updateCartQuantity(int $index, int $quantity): void
     {
-        if (! empty($this->cart[$index]['is_optical']) || ! empty($this->cart[$index]['is_repair'])) {
+        if (! empty($this->cart[$index]['is_optical']) || ! empty($this->cart[$index]['is_repair']) || ! empty($this->cart[$index]['is_lens_solution'])) {
             return;
         }
 
@@ -1974,9 +1979,23 @@ class PosPage extends Page
         return 'https://ui-avatars.com/api/?name=Repair&color=B45309&background=FFEDD5';
     }
 
+    public function getLensSolutionLineImageUrl(): string
+    {
+        return 'https://ui-avatars.com/api/?name=Solution&color=0369A1&background=E0F2FE';
+    }
+
     public function getRepairTypes()
     {
         return RepairType::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function getLensSolutionTypes()
+    {
+        return LensSolutionType::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -2048,6 +2067,7 @@ class PosPage extends Page
             'image' => null,
             'is_optical' => false,
             'is_repair' => true,
+            'is_lens_solution' => false,
             'optical_meta' => null,
         ];
 
@@ -2057,6 +2077,84 @@ class PosPage extends Page
         Notification::make()
             ->success()
             ->title('Repair added to cart')
+            ->send();
+    }
+
+    public function addLensSolutionToCart(): void
+    {
+        $solutionType = $this->lensSolutionTypeId
+            ? LensSolutionType::query()->where('is_active', true)->whereKey($this->lensSolutionTypeId)->first()
+            : null;
+
+        if (! $solutionType) {
+            Notification::make()
+                ->warning()
+                ->title('Select solution type')
+                ->body('Choose a lens solution type from the dropdown.')
+                ->send();
+
+            return;
+        }
+
+        $priceRaw = trim($this->lensSolutionPrice);
+        if ($priceRaw === '' || ! is_numeric($priceRaw)) {
+            Notification::make()
+                ->warning()
+                ->title('Enter a valid price')
+                ->body('Lens solution price is entered manually for each sale.')
+                ->send();
+
+            return;
+        }
+
+        $price = round((float) $priceRaw, 2);
+        if ($price < 0) {
+            Notification::make()
+                ->warning()
+                ->title('Invalid price')
+                ->body('Price cannot be negative.')
+                ->send();
+
+            return;
+        }
+
+        $serviceId = Product::opticalServiceProductId();
+        if (! $serviceId) {
+            Notification::make()
+                ->danger()
+                ->title('Service product missing')
+                ->body('Run migrations or create a product flagged as non-inventory (service) for POS service lines.')
+                ->send();
+
+            return;
+        }
+
+        $lineLabel = 'Lens solution: '.$solutionType->name;
+
+        $this->cart[] = [
+            'product_id' => $serviceId,
+            'name' => $lineLabel,
+            'line_label' => $lineLabel,
+            'color_option_id' => null,
+            'size_option_id' => null,
+            'color_name' => null,
+            'size_name' => null,
+            'price' => $price,
+            'unit_cost' => 0.0,
+            'quantity' => 1,
+            'image' => null,
+            'is_optical' => false,
+            'is_repair' => false,
+            'is_lens_solution' => true,
+            'optical_meta' => null,
+        ];
+
+        $this->lensSolutionTypeId = null;
+        $this->lensSolutionPrice = '';
+
+        Notification::make()
+            ->success()
+            ->title('Lens solution added to cart')
             ->send();
     }
 

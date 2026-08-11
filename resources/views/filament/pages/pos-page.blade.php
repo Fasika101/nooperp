@@ -307,6 +307,7 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                     <button type="button" wire:click="$set('posAreaTab', 'products')" class="pos-lens-tab {{ $posAreaTab === 'products' ? 'active' : '' }}">Products</button>
                     <button type="button" wire:click="$set('posAreaTab', 'customize')" class="pos-lens-tab {{ $posAreaTab === 'customize' ? 'active' : '' }}">Lens customization</button>
                     <button type="button" wire:click="$set('posAreaTab', 'repair')" class="pos-lens-tab {{ $posAreaTab === 'repair' ? 'active' : '' }}">Repair</button>
+                    <button type="button" wire:click="$set('posAreaTab', 'solution')" class="pos-lens-tab {{ $posAreaTab === 'solution' ? 'active' : '' }}">Lens solution</button>
                 </div>
 
                 @if($posAreaTab === 'products')
@@ -617,6 +618,37 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                             </div>
                         @endif
                     </div>
+                @elseif($posAreaTab === 'solution')
+                    <div class="pos-customize">
+                        <p class="pos-customize-title">Add lens solution to the sale</p>
+                        <p style="font-size: 0.8125rem; color: rgb(107 114 128); margin: 0 0 1rem;">Choose the solution type and enter the price. Can be sold alone or with contact lenses. Solution types are managed under <strong>Settings → Lens solution types</strong>.</p>
+
+                        <div class="pos-opt-section" style="max-width: 24rem;">
+                            <div class="pos-cart-field">
+                                <label>Solution type <span style="color: var(--danger-500);">*</span></label>
+                                <select wire:model="lensSolutionTypeId">
+                                    <option value="">— Select —</option>
+                                    @foreach($this->getLensSolutionTypes() as $solutionType)
+                                        <option value="{{ $solutionType->id }}">{{ $solutionType->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="pos-cart-field">
+                                <label>Price <span style="color: var(--danger-500);">*</span></label>
+                                <input type="number" wire:model="lensSolutionPrice" min="0" step="0.01" placeholder="Enter price for this solution" />
+                            </div>
+                        </div>
+
+                        @if($this->getLensSolutionTypes()->isEmpty())
+                            <p style="font-size: 0.875rem; color: rgb(107 114 128); margin-top: 1rem;">No lens solution types yet. Add options under Settings → Lens solution types.</p>
+                        @else
+                            <div class="pos-customize-footer">
+                                <x-filament::button wire:click="addLensSolutionToCart" color="primary">
+                                    Add lens solution to cart
+                                </x-filament::button>
+                            </div>
+                        @endif
+                    </div>
                 @endif
             </div>
 
@@ -638,14 +670,16 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                         ? $this->getOpticalLineImageUrl()
                                         : (! empty($item['is_repair'])
                                             ? $this->getRepairLineImageUrl()
-                                            : $this->getProductImageUrl($item['image'] ?? null));
+                                            : (! empty($item['is_lens_solution'])
+                                                ? $this->getLensSolutionLineImageUrl()
+                                                : $this->getProductImageUrl($item['image'] ?? null)));
                                 @endphp
                                 <img src="{{ $cartLineImage }}" alt="{{ $item['name'] }}" />
                             </div>
                             <div class="pos-cart-item-body">
                                 <div class="pos-cart-item-name">{{ $item['name'] }}</div>
                                 <div class="pos-cart-item-qty">
-                                    @if(!empty($item['is_optical']) || !empty($item['is_repair']))
+                                    @if(!empty($item['is_optical']) || !empty($item['is_repair']) || !empty($item['is_lens_solution']))
                                         <span style="font-size: 0.75rem; color: rgb(107 114 128);">Qty fixed</span>
                                     @else
                                         <button type="button" wire:click="updateCartQuantity({{ $index }}, {{ $item['quantity'] - 1 }})">−</button>

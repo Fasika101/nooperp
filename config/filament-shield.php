@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 use App\Filament\Pages\EditProfilePage;
+use App\Filament\Resources\LensSolutionTypes\LensSolutionTypeResource;
 use App\Filament\Resources\UserResource;
 use BezhanSalleh\FilamentShield\Resources\Roles\RoleResource;
 use Filament\Widgets\AccountWidget;
@@ -180,6 +181,7 @@ return [
         ],
         'exclude' => [
             UserResource::class,
+            LensSolutionTypeResource::class,
         ],
     ],
 
