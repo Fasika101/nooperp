@@ -8,6 +8,7 @@ use App\Models\ShopPrescription;
 use App\Services\Shop\ChapaService;
 use App\Services\Shop\GeminiPrescriptionScanner;
 use App\Services\Shop\ShopCart;
+use App\Services\Shop\ShopOrderNotifier;
 use App\Services\Shop\ShopOrderService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -160,6 +161,13 @@ class CartController extends Controller
             'phone.regex' => 'Enter a valid Ethiopian mobile: +251 and 9 digits starting with 9 or 7.',
         ]);
 
+        if (! $this->chapa->isConfigured()) {
+            return redirect()->route('shop.cart')->with(
+                'error',
+                'Online payment is not ready yet. Add CHAPA_SECRET_KEY (and CHAPA_PUBLIC_KEY) to .env.'
+            );
+        }
+
         $coatingId = isset($data['lens_coating_id']) ? (int) $data['lens_coating_id'] : null;
         if ($coatingId !== null && $coatingId <= 0) {
             $coatingId = null;
@@ -176,30 +184,14 @@ class CartController extends Controller
             return redirect()->route('shop.cart')->with('error', 'Cart total is invalid.');
         }
 
-        $txRef = $this->chapa->makeTxRef();
-        session(['shop_pending_tx' => $txRef]);
-
         try {
             $this->orders->computeTotals($cart);
         } catch (\Throwable $e) {
             return redirect()->route('shop.cart')->with('error', $e->getMessage());
         }
 
-        if (! $this->chapa->isConfigured()) {
-            try {
-                $order = $this->orders->createFromCart($cart, [
-                    'external_ref' => $txRef,
-                    'payment_status' => Order::PAYMENT_STATUS_PAID,
-                    'payment_amount' => $totals['total'],
-                    'status' => 'completed',
-                ]);
-                ShopCart::clear();
-
-                return redirect()->route('shop.success', ['ref' => $order->external_ref]);
-            } catch (\Throwable $e) {
-                return redirect()->route('shop.cart')->with('error', $e->getMessage());
-            }
-        }
+        $txRef = $this->chapa->makeTxRef();
+        session(['shop_pending_tx' => $txRef]);
 
         Storage::disk('local')->put(
             'shop/pending/'.$txRef.'.json',
@@ -215,7 +207,13 @@ class CartController extends Controller
         );
 
         if (! $init['ok'] || ! $init['checkout_url']) {
-            return redirect()->route('shop.cart')->with('error', $init['error'] ?? 'Could not start payment.');
+            Storage::disk('local')->delete('shop/pending/'.$txRef.'.json');
+            $err = $init['error'] ?? 'Could not start Chapa payment.';
+            if (is_array($err)) {
+                $err = implode(' ', \Illuminate\Support\Arr::flatten($err));
+            }
+
+            return redirect()->route('shop.cart')->with('error', (string) $err);
         }
 
         return redirect()->away($init['checkout_url']);
@@ -233,32 +231,8 @@ class CartController extends Controller
             return response('not verified', 200);
         }
 
-        $path = 'shop/pending/'.$txRef.'.json';
-        if (! Storage::disk('local')->exists($path)) {
-            if (Order::query()->where('external_ref', $txRef)->exists()) {
-                return response('ok', 200);
-            }
-
-            return response('pending cart missing', 404);
-        }
-
-        $payload = json_decode(Storage::disk('local')->get($path), true) ?: [];
-        $cart = $payload['cart'] ?? null;
-        if (! is_array($cart)) {
-            return response('invalid cart', 422);
-        }
-
-        try {
-            $this->orders->createFromCart($cart, [
-                'external_ref' => $txRef,
-                'payment_status' => Order::PAYMENT_STATUS_PAID,
-                'payment_amount' => (float) (($payload['totals']['total'] ?? 0)),
-                'status' => 'completed',
-            ]);
-            Storage::disk('local')->delete($path);
-        } catch (\Throwable $e) {
-            Log::error('Shop Chapa callback order failed: '.$e->getMessage(), ['tx' => $txRef]);
-
+        $order = $this->finalizePaidOrder($txRef);
+        if (! $order) {
             return response('order failed', 500);
         }
 
@@ -268,37 +242,79 @@ class CartController extends Controller
     public function success(Request $request): View
     {
         $ref = (string) $request->query('ref', '');
-        $order = $ref !== ''
-            ? Order::query()->where('external_ref', $ref)->with('orderItems')->first()
-            : null;
+        $order = null;
+        $paid = false;
 
-        if ($ref !== '' && ! $order && Storage::disk('local')->exists('shop/pending/'.$ref.'.json')) {
-            $verify = $this->chapa->verify($ref);
-            if ($verify['verified'] ?? false) {
-                $payload = json_decode(Storage::disk('local')->get('shop/pending/'.$ref.'.json'), true) ?: [];
-                try {
-                    $order = $this->orders->createFromCart($payload['cart'] ?? [], [
-                        'external_ref' => $ref,
-                        'payment_status' => Order::PAYMENT_STATUS_PAID,
-                        'payment_amount' => (float) (($payload['totals']['total'] ?? 0)),
-                        'status' => 'completed',
-                    ]);
-                    Storage::disk('local')->delete('shop/pending/'.$ref.'.json');
-                    ShopCart::clear();
-                } catch (\Throwable $e) {
-                    Log::warning('Shop success finalize: '.$e->getMessage());
+        if ($ref !== '') {
+            $order = Order::query()
+                ->where('external_ref', $ref)
+                ->with(['orderItems', 'customer'])
+                ->first();
+
+            if (! $order && Storage::disk('local')->exists('shop/pending/'.$ref.'.json')) {
+                $verify = $this->chapa->verify($ref);
+                if ($verify['verified'] ?? false) {
+                    $order = $this->finalizePaidOrder($ref);
                 }
+            } elseif ($order && $order->payment_status === Order::PAYMENT_STATUS_PAID) {
+                $paid = true;
+                app(ShopOrderNotifier::class)->notifyPaid($order);
             }
-        } else {
+        }
+
+        if ($order && $order->payment_status === Order::PAYMENT_STATUS_PAID) {
+            $paid = true;
             ShopCart::clear();
         }
 
         return view('shop.success', [
             'order' => $order,
             'ref' => $ref,
+            'paid' => $paid,
             'brand' => config('storefront.brand_name'),
             'currency' => config('storefront.currency', 'ETB'),
         ]);
+    }
+
+    /**
+     * Create the ERP order after Chapa verifies payment (idempotent by external_ref).
+     */
+    protected function finalizePaidOrder(string $txRef): ?Order
+    {
+        $existing = Order::query()->where('external_ref', $txRef)->first();
+        if ($existing) {
+            app(ShopOrderNotifier::class)->notifyPaid($existing);
+
+            return $existing;
+        }
+
+        $path = 'shop/pending/'.$txRef.'.json';
+        if (! Storage::disk('local')->exists($path)) {
+            return null;
+        }
+
+        $payload = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        $cart = $payload['cart'] ?? null;
+        if (! is_array($cart)) {
+            return null;
+        }
+
+        try {
+            $order = $this->orders->createFromCart($cart, [
+                'external_ref' => $txRef,
+                'payment_status' => Order::PAYMENT_STATUS_PAID,
+                'payment_amount' => (float) (($payload['totals']['total'] ?? 0)),
+                'status' => 'completed',
+            ]);
+            Storage::disk('local')->delete($path);
+            app(ShopOrderNotifier::class)->notifyPaid($order);
+
+            return $order;
+        } catch (\Throwable $e) {
+            Log::error('Shop finalize order failed: '.$e->getMessage(), ['tx' => $txRef]);
+
+            return null;
+        }
     }
 
     /**

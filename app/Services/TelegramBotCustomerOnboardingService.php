@@ -53,8 +53,15 @@ class TelegramBotCustomerOnboardingService
             return;
         }
 
-        if ($command === '/start' || $command === '/register') {
-            $this->beginRegistration($chat, $command === '/start');
+        if ($command === '/start' || $command === '/shop') {
+            $this->clearRegistration($chat);
+            $this->sendShopEntry($chat);
+
+            return;
+        }
+
+        if ($command === '/register') {
+            $this->beginRegistration($chat, true);
 
             return;
         }
@@ -111,17 +118,41 @@ class TelegramBotCustomerOnboardingService
         if (! is_string($textPayload) || $textPayload === '') {
             return;
         }
-        if (! str_starts_with(trim($textPayload), '/start')) {
+        $command = $this->commandWord(trim($textPayload));
+        if ($command !== '/start' && $command !== '/shop') {
             return;
         }
-        $msg = config('integrations.telegram_welcome_message');
-        if (! is_string($msg) || trim($msg) === '') {
-            return;
+        $this->sendShopEntry($chat);
+    }
+
+    /**
+     * Welcome + Open shop Mini App button.
+     */
+    protected function sendShopEntry(TelegramBotChat $chat): void
+    {
+        $lines = [];
+        $welcome = config('integrations.telegram_welcome_message');
+        if (is_string($welcome) && trim($welcome) !== '') {
+            $lines[] = trim($welcome);
         }
+        $extra = config('integrations.telegram_shop_start_extra');
+        if (is_string($extra) && trim($extra) !== '') {
+            $lines[] = trim($extra);
+        }
+
+        $text = implode("\n\n", array_filter($lines));
+        if ($text === '') {
+            $text = 'Open the shop to browse frames.';
+        }
+
         try {
-            $this->bots->sendTextToChat($chat, $msg);
+            $this->bots->sendTextToChat(
+                $chat,
+                $text,
+                replyMarkup: $this->bots->shopWebAppKeyboard(),
+            );
         } catch (Throwable $e) {
-            Log::warning('Telegram bot welcome reply failed: '.$e->getMessage(), ['exception' => $e]);
+            Log::warning('Telegram shop entry failed: '.$e->getMessage(), ['exception' => $e]);
         }
     }
 
@@ -298,7 +329,11 @@ class TelegramBotCustomerOnboardingService
         $done = str_replace(':id', (string) $customer->id, $done);
 
         try {
-            $this->bots->sendTextToChat($chat, $done, removeKeyboard: true);
+            $this->bots->sendTextToChat(
+                $chat,
+                $done,
+                replyMarkup: $this->bots->shopWebAppKeyboard(),
+            );
         } catch (Throwable $e) {
             Log::warning('Telegram onboarding complete message failed: '.$e->getMessage(), ['exception' => $e]);
         }

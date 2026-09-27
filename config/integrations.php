@@ -30,11 +30,26 @@ return [
     */
     'telegram_welcome_message' => env(
         'TELEGRAM_WELCOME_MESSAGE',
-        'Hello! Your message was received. Our team can see this chat in the system and will reply here when possible.'
+        'Welcome to New Online Optics! Browse frames, try them on, and order from this chat.'
     ),
 
     /*
-    | Collect name, phone, email, and address in private chats (/start, /register).
+    | Mini App / Web App shop URL opened from the bot (must be HTTPS in production).
+    | Defaults to {APP_URL}/shop
+    */
+    'telegram_shop_url' => env('TELEGRAM_SHOP_URL'),
+
+    'telegram_shop_button_text' => env('TELEGRAM_SHOP_BUTTON_TEXT', 'Open shop'),
+
+    'telegram_shop_menu_button_text' => env('TELEGRAM_SHOP_MENU_BUTTON_TEXT', 'Shop'),
+
+    'telegram_shop_start_extra' => env(
+        'TELEGRAM_SHOP_START_EXTRA',
+        "Tap the button below to open the shop.\nSend /register if you want to save your contact details with us."
+    ),
+
+    /*
+    | Collect name, phone, email, and address in private chats (/register).
     */
     'telegram_customer_onboarding_enabled' => env('TELEGRAM_CUSTOMER_ONBOARDING_ENABLED', true),
 
@@ -70,7 +85,7 @@ return [
 
     'telegram_onboarding_unknown_command' => env(
         'TELEGRAM_ONBOARDING_UNKNOWN_COMMAND',
-        'Please finish this step with a normal message, or send /cancel. To restart, send /register.'
+        'Please finish this step with a normal message, or send /cancel. To shop, send /shop. To restart registration, send /register.'
     ),
 
     'telegram_onboarding_complete' => env(

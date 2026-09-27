@@ -49,6 +49,91 @@ class Customer extends Model
     }
 
     /**
+     * Find or create a customer for online / shop orders without renaming past orders.
+     *
+     * Reuses a record only when phone (or email) matches AND the name matches.
+     * Never overwrites an existing customer's name — that would rewrite history on
+     * every earlier order that points at the same customer_id.
+     *
+     * @param  array{name:string,phone?:?string,email?:?string,address?:?string}  $payload
+     */
+    public static function resolveForOnlineOrder(array $payload): self
+    {
+        $name = trim((string) ($payload['name'] ?? ''));
+        $phone = filled($payload['phone'] ?? null) ? trim((string) $payload['phone']) : null;
+        $email = filled($payload['email'] ?? null) ? strtolower(trim((string) $payload['email'])) : null;
+        $address = filled($payload['address'] ?? null) ? trim((string) $payload['address']) : null;
+
+        $customer = null;
+
+        if ($phone) {
+            $byPhone = static::query()->where('phone', $phone)->orderBy('id')->get();
+            $customer = $byPhone->first(
+                fn (self $c) => strcasecmp(trim((string) $c->name), $name) === 0
+            );
+
+            if (! $customer) {
+                $blankName = $byPhone->first(fn (self $c) => trim((string) $c->name) === '');
+                if ($blankName) {
+                    $blankName->fill(array_filter([
+                        'name' => $name !== '' ? $name : null,
+                        'email' => $email,
+                        'address' => $address,
+                    ], fn ($v) => $v !== null))->save();
+
+                    return $blankName->fresh();
+                }
+            }
+        }
+
+        if (! $customer && $email) {
+            $byEmail = static::query()->where('email', $email)->orderBy('id')->get();
+            $customer = $byEmail->first(
+                fn (self $c) => strcasecmp(trim((string) $c->name), $name) === 0
+            );
+
+            if (! $customer) {
+                $blankName = $byEmail->first(fn (self $c) => trim((string) $c->name) === '');
+                if ($blankName) {
+                    $blankName->fill(array_filter([
+                        'name' => $name !== '' ? $name : null,
+                        'phone' => $phone,
+                        'address' => $address,
+                    ], fn ($v) => $v !== null))->save();
+
+                    return $blankName->fresh();
+                }
+            }
+        }
+
+        if ($customer) {
+            // Same person (matched name): refresh contact details only — never rename.
+            $updates = [];
+            if ($phone && blank($customer->phone)) {
+                $updates['phone'] = $phone;
+            }
+            if ($email && blank($customer->email)) {
+                $updates['email'] = $email;
+            }
+            if ($address !== null) {
+                $updates['address'] = $address;
+            }
+            if ($updates !== []) {
+                $customer->fill($updates)->save();
+            }
+
+            return $customer->fresh();
+        }
+
+        return static::create([
+            'name' => $name !== '' ? $name : 'Customer',
+            'phone' => $phone,
+            'email' => $email,
+            'address' => $address,
+        ]);
+    }
+
+    /**
      * Sum of open balances on completed orders (A/R).
      */
     public function outstandingBalance(): float

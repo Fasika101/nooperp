@@ -60,6 +60,10 @@ class TelegramBotStatusCommand extends Command
             $this->comment('Run: php artisan telegram:bot:set-webhook');
         }
 
+        $this->newLine();
+        $this->line('Shop Mini App URL: '.$bots->getShopUrl());
+        $this->comment('Run: php artisan telegram:bot:set-menu-button');
+
         return self::SUCCESS;
     }
 }

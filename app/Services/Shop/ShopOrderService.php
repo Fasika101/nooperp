@@ -8,10 +8,11 @@ use App\Models\OpticalLensNoPrescription;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
-use App\Models\PaymentType;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\ShopPrescription;
+use App\Services\Shop\ShopCatalogService;
+use App\Services\Shop\StorefrontFinance;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -194,15 +195,7 @@ class ShopOrderService
                 OrderItem::create(['order_id' => $order->id, ...$row]);
             }
 
-            $paymentTypeId = config('storefront.payment_type_id');
-            $paymentType = $paymentTypeId
-                ? PaymentType::query()->whereKey($paymentTypeId)->first()
-                : PaymentType::query()
-                    ->where('is_active', true)
-                    ->where(function ($q) {
-                        $q->where('name', 'like', '%Chapa%')->orWhere('name', 'like', '%Online%');
-                    })
-                    ->first();
+            $paymentType = StorefrontFinance::paymentType();
 
             $payAmount = array_key_exists('payment_amount', $meta) && $meta['payment_amount'] !== null
                 ? round((float) $meta['payment_amount'], 2)
@@ -270,32 +263,6 @@ class ShopOrderService
      */
     protected function resolveCustomer(array $payload): Customer
     {
-        $phone = filled($payload['phone'] ?? null) ? trim((string) $payload['phone']) : null;
-        $email = filled($payload['email'] ?? null) ? strtolower(trim((string) $payload['email'])) : null;
-
-        $customer = null;
-        if ($phone) {
-            $customer = Customer::query()->where('phone', $phone)->first();
-        }
-        if (! $customer && $email) {
-            $customer = Customer::query()->where('email', $email)->first();
-        }
-
-        if ($customer) {
-            $customer->fill([
-                'name' => $payload['name'],
-                'phone' => $phone ?: $customer->phone,
-                'address' => $payload['address'] ?? $customer->address,
-            ])->save();
-
-            return $customer;
-        }
-
-        return Customer::create([
-            'name' => $payload['name'],
-            'phone' => $phone,
-            'email' => $email ?: null,
-            'address' => $payload['address'] ?? null,
-        ]);
+        return Customer::resolveForOnlineOrder($payload);
     }
 }

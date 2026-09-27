@@ -46,6 +46,68 @@ class TelegramBotService
     }
 
     /**
+     * Public HTTPS URL for the in-app shop Mini App.
+     */
+    public function getShopUrl(): string
+    {
+        $configured = config('integrations.telegram_shop_url');
+        if (is_string($configured) && trim($configured) !== '') {
+            return rtrim(trim($configured), '/');
+        }
+
+        return url('/shop');
+    }
+
+    /**
+     * Inline keyboard with a Telegram Web App button that opens the shop.
+     *
+     * @return array{inline_keyboard: list<list<array<string, mixed>>>}
+     */
+    public function shopWebAppKeyboard(?string $buttonText = null): array
+    {
+        $text = $buttonText ?? (string) config('integrations.telegram_shop_button_text', 'Open shop');
+
+        return [
+            'inline_keyboard' => [[
+                [
+                    'text' => $text,
+                    'web_app' => ['url' => $this->getShopUrl()],
+                ],
+            ]],
+        ];
+    }
+
+    /**
+     * Pin the shop as the bot's persistent Menu Button (bottom-left in private chats).
+     *
+     * @return array{ok: bool, description?: string}
+     */
+    public function setShopMenuButton(?string $buttonText = null): array
+    {
+        $token = $this->getBotToken();
+        if (! $token) {
+            return ['ok' => false, 'description' => 'Bot token is not configured.'];
+        }
+
+        $text = $buttonText ?? (string) config('integrations.telegram_shop_menu_button_text', 'Shop');
+        $payload = [
+            'menu_button' => [
+                'type' => 'web_app',
+                'text' => $text,
+                'web_app' => ['url' => $this->getShopUrl()],
+            ],
+        ];
+
+        $response = Http::timeout(30)->post(self::API_BASE.$token.'/setChatMenuButton', $payload);
+        $json = $response->json() ?? ['ok' => false, 'description' => 'Invalid response from Telegram.'];
+
+        return [
+            'ok' => (bool) ($json['ok'] ?? false),
+            'description' => $json['description'] ?? null,
+        ];
+    }
+
+    /**
      * @return array{ok: bool, result?: array, description?: string}
      */
     public function getMe(): array

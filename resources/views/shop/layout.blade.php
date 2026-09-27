@@ -22,6 +22,7 @@
             --accent-soft: #eff6ff;
             --accent-btn: #dbeafe;
             --accent-btn-text: #1e40af;
+            --accent-border: #bfdbfe;
             --danger: #dc2626;
             --radius: 1.25rem;
             --shadow: 0 10px 30px rgba(29, 78, 216, 0.08);
@@ -64,10 +65,13 @@
             border-radius: 999px;
             padding: 0.45rem 0.85rem; font-size: 0.8125rem; font-weight: 700;
             transition: transform 0.15s ease, box-shadow 0.15s ease;
+            background: var(--accent-btn);
+            color: var(--accent-btn-text);
+            border: 1px solid var(--accent-border);
         }
         .cart-pill:active { transform: scale(0.96); }
         .flash { border-radius: 0.85rem; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.875rem; animation: fadeUp 0.35s ease; }
-        .flash-ok { background: var(--accent-soft); color: #1e3a8a; }
+        .flash-ok { background: var(--accent-soft); color: #1e3a8a; border: 1px solid var(--accent-border); }
         .flash-err { background: #fee2e2; color: var(--danger); }
         .page-kicker {
             font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em;
@@ -76,6 +80,7 @@
         .page-title {
             font-size: clamp(1.55rem, 5.5vw, 2rem); line-height: 1.2;
             letter-spacing: -0.02em; margin: 0 0 0.5rem; font-weight: 700;
+            color: var(--ink);
         }
         .page-sub { color: var(--ink-soft); margin: 0 0 1.5rem; font-size: 0.95rem; }
         .btn {
@@ -88,34 +93,30 @@
         .btn-primary {
             background: var(--accent-btn);
             color: var(--accent-btn-text);
-            border: 1px solid #bfdbfe;
+            border: 1px solid var(--accent-border);
         }
         .btn-primary:hover { background: #bfdbfe; }
         .btn-accent {
             background: var(--accent-btn);
             color: var(--accent-btn-text);
-            border: 1px solid #bfdbfe;
+            border: 1px solid var(--accent-border);
             box-shadow: 0 6px 16px rgba(37, 99, 235, 0.12);
         }
         .btn-accent:hover { background: #bfdbfe; }
         .btn-ghost {
             background: #fff;
             color: var(--accent-btn-text);
-            border: 1px solid #bfdbfe;
+            border: 1px solid var(--accent-border);
         }
         .btn-ghost:hover { background: var(--accent-soft); }
-        .cart-pill {
-            background: var(--accent-btn);
-            color: var(--accent-btn-text);
-            border: 1px solid #bfdbfe;
-        }
         .btn-sm { width: auto; padding: 0.55rem 0.9rem; font-size: 0.8125rem; }
         .btn:disabled, .btn[disabled] { opacity: 0.45; pointer-events: none; }
         .dock {
             position: fixed; left: 50%; transform: translateX(-50%); bottom: 0;
             width: min(480px, 100%);
             padding: 0.75rem 1rem calc(0.75rem + var(--safe-b));
-            background: linear-gradient(to top, var(--bg) 70%, transparent); z-index: 40;
+            background: linear-gradient(to top, var(--bg) 72%, transparent);
+            z-index: 40;
         }
         .field { margin-bottom: 0.85rem; }
         .field label {
@@ -155,7 +156,7 @@
             line-height: 1.6;
         }
         .shop-footer a {
-            color: var(--accent-btn-text, #1e40af);
+            color: var(--accent-btn-text);
             font-weight: 600;
             text-decoration: underline;
             text-underline-offset: 2px;
@@ -187,10 +188,10 @@
         </header>
 
         @if(session('success'))
-            <div class="flash flash-ok">{{ session('success') }}</div>
+            <div class="flash flash-ok">{{ is_array(session('success')) ? implode(' ', \Illuminate\Support\Arr::flatten(session('success'))) : session('success') }}</div>
         @endif
         @if(session('error'))
-            <div class="flash flash-err">{{ session('error') }}</div>
+            <div class="flash flash-err">{{ is_array(session('error')) ? implode(' ', \Illuminate\Support\Arr::flatten(session('error'))) : session('error') }}</div>
         @endif
         @if($errors->any())
             <div class="flash flash-err">{{ $errors->first() }}</div>

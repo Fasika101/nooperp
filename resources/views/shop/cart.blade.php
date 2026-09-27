@@ -179,8 +179,6 @@
             <div class="tot-row tot-grand"><span>Total</span><span id="tot-grand">{{ $currency }} {{ number_format($totals['total'], 2) }}</span></div>
         </section>
 
-        <a href="{{ route('shop.frames') }}" class="btn btn-ghost keep-browsing">Keep browsing</a>
-
         <div class="cart-dock-spacer" aria-hidden="true"></div>
 
         <div class="dock cart-dock" id="cart-dock">
@@ -188,9 +186,13 @@
                 <span>Total to pay</span>
                 <strong id="dock-grand">{{ $currency }} {{ number_format($totals['total'], 2) }}</strong>
             </div>
-            <button type="submit" class="btn btn-accent">
-                {{ $chapaReady ? 'Pay with Chapa' : 'Complete order' }}
+            <button type="submit" class="btn btn-accent" @disabled(! $chapaReady)>
+                Pay with Chapa
             </button>
+            @unless($chapaReady)
+                <p class="field-hint" style="text-align:center;margin-top:0.5rem;">Payment gateway keys are not set yet.</p>
+            @endunless
+            <a href="{{ route('shop.frames') }}" class="btn btn-ghost keep-browsing">Keep browsing</a>
         </div>
     </form>
 
@@ -229,7 +231,7 @@
         .rx-ok {
             display:flex; justify-content:space-between; align-items:center; gap: 0.75rem;
             padding: 0.9rem 1rem; border-radius: var(--radius); background: var(--accent-soft);
-            color: #1e3a8a; font-weight: 700;
+            color: #1e3a8a; font-weight: 700; border: 1px solid var(--accent-border);
         }
         .rx-ok-main { display:flex; flex-direction:column; gap:0.15rem; }
         .rx-ok-main small { font-weight: 500; font-size: 0.8rem; opacity: 0.85; }
@@ -255,20 +257,21 @@
         }
         .addon:has(input:checked) {
             border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); animation: pop 0.28s ease;
+            background: var(--accent-soft);
         }
         .addon input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
         .addon-body { display:flex; justify-content:space-between; flex:1; gap:0.5rem; }
         .addon-body em { font-style:normal; color: var(--ink-soft); font-size:0.85rem; font-weight: 700; }
-        .totals { padding: 1rem 1.1rem; margin-bottom: 1rem; }
+        .totals { padding: 1rem 1.1rem; margin-bottom: 2.5rem; }
         .tot-row { display:flex; justify-content:space-between; margin-bottom:0.45rem; font-size:0.9rem; }
         .tot-grand { margin-top:0.55rem; padding-top:0.55rem; border-top:1px solid var(--line); font-weight:700; font-size:1.05rem; color: var(--accent); }
         #tot-grand { transition: transform 0.2s ease; }
         #tot-grand.is-bump { animation: pop 0.3s ease; }
-        .keep-browsing { margin-bottom: 0.5rem; }
-        .cart-dock-spacer { height: calc(8.5rem + var(--safe-b)); }
+        .keep-browsing { margin-top: 0.55rem; }
+        .cart-dock-spacer { height: calc(13.5rem + var(--safe-b)); }
         .delivery-block .field input,
         .delivery-block .field textarea {
-            scroll-margin-bottom: calc(9.5rem + var(--safe-b));
+            scroll-margin-bottom: calc(14rem + var(--safe-b));
         }
         .phone-row {
             display: flex; align-items: stretch; gap: 0;
@@ -281,7 +284,7 @@
         }
         .phone-prefix {
             display: flex; align-items: center; padding: 0 0.85rem;
-            background: #eff6ff; color: #1e40af; font-weight: 700; font-size: 0.95rem;
+            background: var(--accent-soft); color: #1e40af; font-weight: 700; font-size: 0.95rem;
             border-right: 1px solid var(--line); user-select: none;
         }
         .phone-row input {
@@ -298,14 +301,12 @@
             font-size: 0.9rem; color: #1e3a8a;
         }
         .dock-total strong {
-            font-size: 1.2rem; font-weight: 700; color: #1e40af;
+            font-size: 1.25rem; font-weight: 700; color: #1e40af;
+            transition: transform 0.2s ease;
         }
-        .cart-dock.is-hidden {
-            opacity: 0; pointer-events: none; transform: translate(-50%, 110%);
-            transition: opacity 0.2s ease, transform 0.2s ease;
-        }
+        .dock-total strong.is-bump { animation: pop 0.3s ease; }
         .cart-dock {
-            transition: opacity 0.2s ease, transform 0.2s ease;
+            background: linear-gradient(to top, var(--bg) 78%, transparent);
         }
     </style>
     @endpush
@@ -346,23 +347,6 @@
                 syncPhone();
             }
 
-            var dock = document.getElementById('cart-dock');
-            var deliveryInputs = document.querySelectorAll('#name, #phone_local, #address');
-            function setDockHidden(hidden) {
-                if (!dock) return;
-                dock.classList.toggle('is-hidden', !!hidden);
-            }
-            deliveryInputs.forEach(function (el) {
-                el.addEventListener('focus', function () { setDockHidden(true); });
-                el.addEventListener('blur', function () {
-                    setTimeout(function () {
-                        var active = document.activeElement;
-                        var still = active && (active.id === 'name' || active.id === 'phone_local' || active.id === 'address');
-                        if (!still) setDockHidden(false);
-                    }, 80);
-                });
-            });
-
             var form = document.getElementById('checkout-form');
             if (form) {
                 form.addEventListener('submit', function (e) {
@@ -388,6 +372,13 @@
                 return currency + ' ' + (Math.round(n * 100) / 100).toFixed(2);
             }
 
+            function bump(el) {
+                if (!el) return;
+                el.classList.remove('is-bump');
+                void el.offsetWidth;
+                el.classList.add('is-bump');
+            }
+
             function refresh() {
                 var checked = document.querySelector('input[name="lens_coating_id"]:checked');
                 var lens = checked ? parseFloat(checked.dataset.price || '0') : 0;
@@ -403,11 +394,12 @@
                 var grand = subtotal + prescription + lens;
                 var el = document.getElementById('tot-grand');
                 el.textContent = money(grand);
-                el.classList.remove('is-bump');
-                void el.offsetWidth;
-                el.classList.add('is-bump');
+                bump(el);
                 var dockGrand = document.getElementById('dock-grand');
-                if (dockGrand) dockGrand.textContent = money(grand);
+                if (dockGrand) {
+                    dockGrand.textContent = money(grand);
+                    bump(dockGrand);
+                }
             }
 
             document.querySelectorAll('input[name="lens_coating_id"]').forEach(function (r) {

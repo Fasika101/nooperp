@@ -119,6 +119,18 @@
         .frame-price { margin:0; font-weight:700; color: var(--accent); font-size:0.9rem; }
         .frame-stock { margin:0; font-size:0.7rem; color: var(--ink-soft); }
         .frame-actions { display:flex; gap:0.35rem; margin-top:auto; padding-top:0.5rem; }
+        .frame-actions .pick-btn {
+            background: var(--accent-btn);
+            color: var(--accent-btn-text);
+            border: 1px solid var(--accent-border);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+        }
+        .frame-actions .pick-btn:hover { background: #bfdbfe; color: var(--accent-btn-text); }
+        .sheet-panel #pick-submit {
+            background: var(--accent-btn);
+            color: var(--accent-btn-text);
+            border: 1px solid var(--accent-border);
+        }
         .sheet {
             position: fixed; inset: 0; z-index: 55; background: rgba(15,23,42,0.45);
             display:flex; align-items:flex-end; justify-content:center;
@@ -139,9 +151,10 @@
             border: 1px solid var(--line); background: #fff; border-radius: 999px;
             padding: 0.45rem 0.8rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;
             transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+            color: var(--ink);
         }
         .chip:active { transform: scale(0.96); }
-        .chip.is-on { background: #dbeafe; color: #1e40af; border-color: #93c5fd; animation: pop 0.25s ease; }
+        .chip.is-on { background: var(--accent-btn); color: var(--accent-btn-text); border-color: #93c5fd; animation: pop 0.25s ease; }
         .chip.is-off { opacity: 0.35; pointer-events: none; }
         .try-modal {
             position: fixed; inset: 0; z-index: 60; background: rgba(15,23,42,0.55);

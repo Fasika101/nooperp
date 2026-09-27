@@ -13,15 +13,25 @@ return [
     /** Branch used for online stock + order fulfillment */
     'branch_id' => (int) env('STOREFRONT_BRANCH_ID', 1),
 
-    /** PaymentType id for online gateways (e.g. Chapa). */
+    /** PaymentType id for online gateways (e.g. Chapa). Auto-created/linked if empty. */
     'payment_type_id' => env('STOREFRONT_PAYMENT_TYPE_ID') !== null && env('STOREFRONT_PAYMENT_TYPE_ID') !== ''
         ? (int) env('STOREFRONT_PAYMENT_TYPE_ID')
+        : null,
+
+    /** Bank account that receives all website order deposits. Auto-created if empty. */
+    'bank_account_id' => env('STOREFRONT_BANK_ACCOUNT_ID') !== null && env('STOREFRONT_BANK_ACCOUNT_ID') !== ''
+        ? (int) env('STOREFRONT_BANK_ACCOUNT_ID')
         : null,
 
     'chapa' => [
         'secret_key' => env('CHAPA_SECRET_KEY'),
         'public_key' => env('CHAPA_PUBLIC_KEY'),
         'base_url' => env('CHAPA_BASE_URL', 'https://api.chapa.co/v1'),
+    ],
+
+    'sms_ethiopia' => [
+        'api_key' => env('SMSETHIOPIA_API_KEY'),
+        'base_url' => env('SMSETHIOPIA_BASE_URL', 'https://smsethiopia.com/api'),
     ],
 
     /** Flat add-on when a prescription photo is uploaded / scanned */
