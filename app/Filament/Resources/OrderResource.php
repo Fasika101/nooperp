@@ -177,6 +177,18 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('branch.name')
                     ->label('Branch')
                     ->placeholder('—'),
+                Tables\Columns\TextColumn::make('source')
+                    ->badge()
+                    ->color(fn (?string $state): string => match ($state) {
+                        'online' => 'info',
+                        'pos' => 'gray',
+                        default => 'gray',
+                    })
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('external_ref')
+                    ->label('Web ref')
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {

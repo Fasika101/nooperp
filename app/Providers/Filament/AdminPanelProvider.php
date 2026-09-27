@@ -38,6 +38,8 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make()
                     ->label('Sales'),
                 NavigationGroup::make()
+                    ->label('Website'),
+                NavigationGroup::make()
                     ->label('Inventory'),
                 NavigationGroup::make()
                     ->label('Optical'),
@@ -61,6 +63,12 @@ class AdminPanelProvider extends PanelProvider
                     ->group('Workspaces')
                     ->sort(0)
                     ->badge('↗'),
+                NavigationItem::make('Open web shop')
+                    ->url('/shop')
+                    ->icon('heroicon-o-shopping-bag')
+                    ->group('Website')
+                    ->sort(0)
+                    ->openUrlInNewTab(),
             ])
             ->colors([
                 'primary' => Color::Blue,

@@ -32,6 +32,9 @@ class Order extends Model
         'tax_amount',
         'tax_type_id',
         'status',
+        'source',
+        'external_ref',
+        'shipping_status',
     ];
 
     protected function casts(): array
@@ -114,5 +117,10 @@ class Order extends Model
     public function affiliateCommissionSettlements(): HasMany
     {
         return $this->hasMany(AffiliateCommissionSettlement::class);
+    }
+
+    public function shopPrescriptions(): HasMany
+    {
+        return $this->hasMany(ShopPrescription::class);
     }
 }

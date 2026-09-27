@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\PrescriptionController;
 use App\Http\Controllers\ReceiptController;
+use App\Http\Controllers\Shop\CartController;
+use App\Http\Controllers\Shop\ShopController;
 use App\Http\Controllers\TelegramBotAttachmentController;
 use App\Http\Controllers\TelegramBotWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -20,6 +22,22 @@ Route::get('/', function () {
     }
 
     return view('welcome');
+});
+
+Route::prefix('shop')->name('shop.')->group(function () {
+    Route::get('/', [ShopController::class, 'gender'])->name('gender');
+    Route::get('/gender/{genderId}', [ShopController::class, 'selectGender'])->name('gender.select')->whereNumber('genderId');
+    Route::get('/frames', [ShopController::class, 'frames'])->name('frames');
+    Route::post('/cart/add', [ShopController::class, 'addToCart'])->name('cart.add');
+
+    Route::get('/cart', [CartController::class, 'show'])->name('cart');
+    Route::delete('/cart/item/{index}', [CartController::class, 'removeItem'])->name('cart.remove')->whereNumber('index');
+    Route::post('/cart/prescription', [CartController::class, 'uploadPrescription'])->name('cart.prescription');
+    Route::delete('/cart/prescription', [CartController::class, 'clearPrescription'])->name('cart.prescription.clear');
+    Route::post('/cart/options', [CartController::class, 'updateOptions'])->name('cart.options');
+    Route::post('/checkout', [CartController::class, 'checkout'])->name('checkout');
+    Route::match(['get', 'post'], '/chapa/callback', [CartController::class, 'chapaCallback'])->name('chapa.callback');
+    Route::get('/success', [CartController::class, 'success'])->name('success');
 });
 
 Route::middleware(['auth'])->prefix('admin')->group(function () {
