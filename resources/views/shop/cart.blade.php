@@ -30,7 +30,7 @@
             <h2 class="block-title">Prescription</h2>
             <p class="block-sub">
                 @if($geminiReady)
-                    Upload a clear photo we scan it and estimate lens price from ERP Rx tiers.
+                    Upload a clear photo we scan it and estimate lens price for your prescription.
                 @else
                     Upload a clear photo. Adds {{ $currency }} {{ number_format($prescriptionPrice, 2) }}.
                 @endif
