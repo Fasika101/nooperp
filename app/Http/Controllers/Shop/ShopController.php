@@ -23,6 +23,7 @@ class ShopController extends Controller
             'genders' => $this->catalog->genders(),
             'brand' => config('storefront.brand_name'),
             'cartCount' => 0,
+            'shopStep' => 1,
         ]);
     }
 
@@ -38,7 +39,7 @@ class ShopController extends Controller
         return redirect()->route('shop.frames');
     }
 
-    public function frames(): View|RedirectResponse
+    public function frames(Request $request): View|RedirectResponse
     {
         $cart = ShopCart::get();
         if (empty($cart['gender_id'])) {
@@ -52,18 +53,35 @@ class ShopController extends Controller
             return redirect()->route('shop.gender');
         }
 
-        $frames = $this->catalog->framesForGender((int) $cart['gender_id']);
+        $perPage = 10;
+        $page = max(1, (int) $request->query('page', 1));
+        $allFrames = $this->catalog->framesForGender((int) $cart['gender_id']);
+        $total = $allFrames->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        if ($page > $lastPage) {
+            $page = $lastPage;
+        }
+        $frames = $allFrames->slice(($page - 1) * $perPage, $perPage)->values();
         $merchantId = (string) config('storefront.banuba.tint_merchant_id', '');
 
         return view('shop.frames', [
             'gender' => $gender,
             'frames' => $frames,
+            'page' => $page,
+            'lastPage' => $lastPage,
+            'totalFrames' => $total,
+            'perPage' => $perPage,
             'brand' => config('storefront.brand_name'),
             'currency' => config('storefront.currency', 'ETB'),
             'cartCount' => ShopCart::totals()['item_count'],
             'banubaReady' => $merchantId !== '',
             'banubaMerchantId' => $merchantId,
             'banubaWidgetUrl' => (string) config('storefront.banuba.widget_url'),
+            'stickyNav' => true,
+            'backUrl' => route('shop.gender'),
+            'backLabel' => 'Back',
+            'shopStep' => 2,
+            'hasDock' => ShopCart::totals()['item_count'] > 0,
         ]);
     }
 

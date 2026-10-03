@@ -5,11 +5,15 @@
 @section('content')
     <div class="frames-head anim-in">
         <div>
-            <p class="page-kicker">Step 2 · {{ $gender->name }}</p>
-            <h1 class="page-title">Frames in stock</h1>
-            <p class="page-sub" style="margin-bottom:0.75rem;">Choose color & size, then add to cart.</p>
+            <h1 class="page-title">{{ $gender->name }} frames</h1>
+            <p class="page-sub" style="margin-bottom:0;">
+                @if(($totalFrames ?? $frames->count()) > 0)
+                    Showing {{ $frames->count() }} of {{ $totalFrames ?? $frames->count() }} · page {{ $page ?? 1 }}
+                @else
+                    Choose color &amp; size, then add to cart.
+                @endif
+            </p>
         </div>
-        <a href="{{ route('shop.gender') }}" class="btn btn-ghost btn-sm">Change</a>
     </div>
 
     @if($frames->isEmpty())
@@ -41,6 +45,18 @@
                 </article>
             @endforeach
         </div>
+
+        @if(($lastPage ?? 1) > 1)
+            <div class="frame-pager anim-in">
+                @if(($page ?? 1) > 1)
+                    <a href="{{ route('shop.frames', ['page' => $page - 1]) }}" class="btn btn-ghost">← Previous</a>
+                @endif
+                <span class="frame-pager-meta">{{ $page ?? 1 }} / {{ $lastPage }}</span>
+                @if(($page ?? 1) < ($lastPage ?? 1))
+                    <a href="{{ route('shop.frames', ['page' => $page + 1]) }}" class="btn btn-accent">Next →</a>
+                @endif
+            </div>
+        @endif
     @endif
 
     <div class="dock" style="pointer-events:none;">
@@ -100,12 +116,25 @@
     <style>
         .frames-head { display:flex; align-items:flex-start; justify-content:space-between; gap:0.75rem; margin-bottom:1rem; }
         .frame-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
+        .frame-pager {
+            display: flex; align-items: center; justify-content: center; gap: 0.65rem;
+            flex-wrap: wrap; margin: 1.25rem 0 0.5rem;
+        }
+        .frame-pager .btn { width: auto; min-width: 7.5rem; padding: 0.75rem 1.1rem; }
+        .frame-pager-meta {
+            font-size: 0.8125rem; font-weight: 700; color: var(--ink-soft);
+            min-width: 3rem; text-align: center;
+        }
         .frame-card {
             background: var(--bg-elevated); border-radius: 1.1rem; overflow: hidden;
             border: 1px solid var(--line); display: flex; flex-direction: column;
-            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
         .frame-card:active { transform: scale(0.98); }
+        .frame-actions .btn, .frame-pager .btn {
+            touch-action: manipulation;
+            min-height: 2.5rem;
+        }
         .frame-media {
             aspect-ratio: 1 / 1; background: #e8eefc center/cover no-repeat; position: relative;
         }

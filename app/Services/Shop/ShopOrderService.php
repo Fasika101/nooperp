@@ -23,6 +23,7 @@ class ShopOrderService
      *
      * @param  array{
      *   external_ref: string,
+     *   chapa_reference?: ?string,
      *   payment_status?: string,
      *   payment_amount?: float|null,
      *   status?: string
@@ -32,7 +33,11 @@ class ShopOrderService
     {
         $existing = Order::query()->where('external_ref', $meta['external_ref'])->first();
         if ($existing) {
-            return $existing;
+            if (! empty($meta['chapa_reference']) && blank($existing->chapa_reference)) {
+                $existing->forceFill(['chapa_reference' => $meta['chapa_reference']])->saveQuietly();
+            }
+
+            return $existing->fresh();
         }
 
         $branchId = (int) config('storefront.branch_id');
@@ -154,10 +159,10 @@ class ShopOrderService
             }
 
             if ($totals['lens'] > 0 && $serviceId) {
-                $lensLabel = 'Lens coating';
+                $lensLabel = 'Non-Prescription';
                 if (! empty($cart['lens_coating_id'])) {
                     $lensRow = \App\Models\OpticalLensNoPrescription::query()->find($cart['lens_coating_id']);
-                    $lensLabel = $lensRow?->name ? 'Lens: '.$lensRow->name : $lensLabel;
+                    $lensLabel = $lensRow?->name ? 'Non-Prescription: '.$lensRow->name : $lensLabel;
                 }
                 $prepared[] = [
                     'product_id' => $serviceId,
@@ -185,6 +190,7 @@ class ShopOrderService
                 'status' => $status,
                 'source' => 'online',
                 'external_ref' => $meta['external_ref'],
+                'chapa_reference' => $meta['chapa_reference'] ?? null,
                 'shipping_status' => 'pending',
                 'amount_paid' => 0,
                 'balance_due' => $totals['total'],
@@ -237,9 +243,16 @@ class ShopOrderService
             $subtotal += (float) ($item['price'] ?? 0) * (int) ($item['quantity'] ?? 1);
         }
 
-        $prescription = ! empty($cart['prescription']['scanned'])
-            ? (float) ($cart['prescription']['price'] ?? config('storefront.prescription_price', 0))
-            : 0.0;
+        $prescription = 0.0;
+        if (! empty($cart['prescription']['scanned'])) {
+            $mode = (string) ($cart['prescription']['price_mode'] ?? 'exact');
+            if ($mode !== 'quote') {
+                $prescription = (float) ($cart['prescription']['price'] ?? config('storefront.prescription_price', 0));
+            }
+            if ($prescription < 0) {
+                $prescription = 0.0;
+            }
+        }
 
         $lens = 0.0;
         if (! empty($cart['lens_coating_id'])) {

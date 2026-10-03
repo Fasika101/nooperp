@@ -46,20 +46,72 @@
             min-height: 100dvh;
             max-width: 480px;
             margin: 0 auto;
-            padding: calc(0.75rem + var(--safe-t)) 1rem calc(7.5rem + var(--safe-b));
+            padding: calc(0.75rem + var(--safe-t)) 1rem calc(1rem + var(--safe-b));
             position: relative;
             display: flex;
             flex-direction: column;
         }
+        .shop-shell.has-dock {
+            padding-bottom: calc(0.5rem + var(--safe-b));
+        }
         .shop-top {
             display: flex; align-items: center; justify-content: space-between;
-            gap: 0.75rem; margin-bottom: 1.25rem;
+            gap: 0.75rem; margin-bottom: 1rem;
         }
+        .shop-top.is-sticky {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            margin: calc(-0.75rem - var(--safe-t)) -1rem 1rem;
+            padding: calc(0.65rem + var(--safe-t)) 1rem 0.65rem;
+            background: rgba(244, 248, 255, 0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--line);
+        }
+        .shop-nav-left {
+            display: flex; align-items: center; gap: 0.55rem; min-width: 0; flex: 1;
+        }
+        .shop-back {
+            flex-shrink: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            gap: 0.25rem;
+            min-height: 2.5rem; min-width: 2.5rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 999px;
+            background: var(--accent-btn);
+            color: var(--accent-btn-text);
+            border: 1px solid var(--accent-border);
+            font-size: 0.8125rem; font-weight: 700;
+            transition: transform 0.12s ease, background 0.12s ease;
+            touch-action: manipulation;
+            cursor: pointer;
+        }
+        .shop-back:active { transform: scale(0.95); background: #bfdbfe; }
         .shop-brand {
+            display: inline-flex; align-items: center; gap: 0.5rem;
             font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em;
             color: var(--accent);
+            min-width: 0;
+            overflow: hidden;
+        }
+        .shop-brand-logo {
+            width: 2rem; height: 2rem; object-fit: contain; flex-shrink: 0;
+            border-radius: 0.45rem; background: #fff;
+        }
+        .shop-brand-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .shop-brand span { color: var(--ink); font-weight: 500; }
+        a, button, .gender-card, .cart-pill, .shop-back, .btn {
+            touch-action: manipulation;
+            cursor: pointer;
+            -webkit-user-select: none;
+            user-select: none;
+        }
         .cart-pill {
             display: inline-flex; align-items: center; gap: 0.35rem;
             border-radius: 999px;
@@ -82,7 +134,7 @@
             letter-spacing: -0.02em; margin: 0 0 0.5rem; font-weight: 700;
             color: var(--ink);
         }
-        .page-sub { color: var(--ink-soft); margin: 0 0 1.5rem; font-size: 0.95rem; }
+        .page-sub { color: var(--ink-soft); margin: 0 0 1rem; font-size: 0.95rem; }
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
             width: 100%; border: 0; border-radius: 999px; padding: 0.95rem 1.25rem;
@@ -147,27 +199,84 @@
         .anim-in { animation: fadeUp 0.4s ease both; }
         .shop-main { flex: 1 1 auto; }
         .shop-footer {
-            margin-top: 2rem;
-            padding: 1.25rem 0 0.5rem;
-            border-top: 1px solid var(--line);
+            margin-top: 1rem;
+            padding: 0.75rem 0 0;
             text-align: center;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: var(--ink-soft);
-            line-height: 1.6;
+            line-height: 1.4;
         }
-        .shop-footer a {
-            color: var(--accent-btn-text);
-            font-weight: 600;
-            text-decoration: underline;
-            text-underline-offset: 2px;
+        .shop-progress {
+            margin: 0 0 1rem;
+            padding: 0.1rem 0 0.2rem;
         }
-        .shop-footer .footer-links {
+        .shop-progress-track {
+            position: relative;
+            height: 4px;
+            margin: 0 1.1rem 0.7rem;
+            border-radius: 999px;
+            background: #dbeafe;
+            overflow: hidden;
+        }
+        .shop-progress-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #60a5fa, #2563eb);
+            transition: width 0.35s ease;
+        }
+        .shop-progress-steps {
+            list-style: none;
+            margin: 0;
+            padding: 0;
             display: flex;
-            justify-content: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-bottom: 0.35rem;
+            justify-content: space-between;
+            gap: 0.25rem;
         }
+        .shop-progress-step {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.35rem;
+            min-width: 0;
+            color: #94a3b8;
+        }
+        .shop-progress-dot {
+            width: 2.15rem;
+            height: 2.15rem;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border: 1.5px solid #cbd5e1;
+            color: #94a3b8;
+            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+        }
+        .shop-progress-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+        .shop-progress-step.is-done .shop-progress-dot {
+            background: #dbeafe;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
+        .shop-progress-step.is-done { color: #1e40af; }
+        .shop-progress-step.is-current .shop-progress-dot {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #fff;
+            transform: scale(1.08);
+            box-shadow: 0 6px 14px rgba(37, 99, 235, 0.28);
+        }
+        .shop-progress-step.is-current { color: #1d4ed8; }
         @media (min-width: 481px) {
             body { background: #e8eefc; }
             .shop-shell {
@@ -179,13 +288,29 @@
     @stack('head')
 </head>
 <body>
-    <div class="shop-shell">
-        <header class="shop-top">
-            <a href="{{ route('shop.gender') }}" class="shop-brand">{{ config('storefront.brand_name', 'New Online Optics') }}</a>
+    @php
+        $shopLogoUrl = $shopLogoUrl ?? \App\Support\PublicLanding::logoUrl();
+        $shopBrandName = $brand ?? config('storefront.brand_name', 'New Online Optics');
+    @endphp
+    <div class="shop-shell {{ !empty($hasDock) ? 'has-dock' : '' }}">
+        <header class="shop-top {{ !empty($stickyNav) ? 'is-sticky' : '' }}">
+            <div class="shop-nav-left">
+                @if(!empty($backUrl))
+                    <a href="{{ $backUrl }}" class="shop-back" aria-label="{{ $backLabel ?? 'Back' }}">← {{ $backLabel ?? 'Back' }}</a>
+                @endif
+                <a href="{{ route('shop.gender') }}" class="shop-brand">
+                    @if($shopLogoUrl)
+                        <img src="{{ $shopLogoUrl }}" alt="{{ $shopBrandName }}" class="shop-brand-logo">
+                    @endif
+                    <span class="shop-brand-text">{{ $shopBrandName }}</span>
+                </a>
+            </div>
             @if(($cartCount ?? 0) > 0)
                 <a href="{{ route('shop.cart') }}" class="cart-pill">Cart · {{ $cartCount }}</a>
             @endif
         </header>
+
+        @include('shop.partials.progress')
 
         @if(session('success'))
             <div class="flash flash-ok">{{ is_array(session('success')) ? implode(' ', \Illuminate\Support\Arr::flatten(session('success'))) : session('success') }}</div>
@@ -202,27 +327,16 @@
         </div>
 
         <footer class="shop-footer">
-            <div class="footer-links">
-                <a href="{{ config('storefront.privacy_url') }}" target="_blank" rel="noopener noreferrer">Privacy and Security</a>
-            </div>
-            <div>
-                {{ config('storefront.brand_name', 'New Online Optics') }}
-                &copy; {{ config('storefront.copyright_year', date('Y')) }}. All Rights Reserved
-            </div>
+            {{ $shopBrandName }} &copy; {{ config('storefront.copyright_year', date('Y')) }}
         </footer>
     </div>
     @stack('scripts')
     <script>
+        // Block pinch-zoom only — do not intercept single taps (that made buttons feel dead).
         document.addEventListener('touchstart', function (e) {
             if (e.touches.length > 1) e.preventDefault();
         }, { passive: false });
         document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
-        var lastTouch = 0;
-        document.addEventListener('touchend', function (e) {
-            var now = Date.now();
-            if (now - lastTouch <= 300) e.preventDefault();
-            lastTouch = now;
-        }, { passive: false });
     </script>
 </body>
 </html>

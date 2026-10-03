@@ -98,6 +98,7 @@ class ShopCart
 
     /**
      * @param  array<string, mixed>  $scan
+     * @param  array<string, mixed>|null  $pricing
      */
     public static function setPrescription(
         string $path,
@@ -105,13 +106,25 @@ class ShopCart
         float $price,
         ?int $prescriptionId = null,
         bool $scanned = true,
+        ?array $pricing = null,
     ): void {
         $cart = self::get();
+        $mode = (string) ($pricing['mode'] ?? 'exact');
+        $charge = $mode === 'quote' ? 0.0 : max(0.0, round($price, 2));
+        if ($charge < 0) {
+            $charge = 0.0;
+        }
+
         $cart['prescription'] = [
             'path' => $path,
             'scanned' => $scanned,
             'scan' => $scan,
-            'price' => round($price, 2),
+            'price' => $charge,
+            'price_min' => isset($pricing['price_min']) ? (float) $pricing['price_min'] : null,
+            'price_max' => isset($pricing['price_max']) ? (float) $pricing['price_max'] : null,
+            'price_mode' => $mode,
+            'price_label' => (string) ($pricing['label'] ?? 'Lens price'),
+            'price_note' => (string) ($pricing['note'] ?? ''),
             'prescription_id' => $prescriptionId,
             'vision_type' => $scan['vision_type'] ?? null,
             'confidence' => $scan['confidence'] ?? null,
@@ -168,9 +181,17 @@ class ShopCart
 
         $prescription = 0.0;
         if (! empty($cart['prescription']['scanned'])) {
-            $prescription = isset($cart['prescription']['price'])
-                ? (float) $cart['prescription']['price']
-                : (float) config('storefront.prescription_price', 0);
+            $mode = (string) ($cart['prescription']['price_mode'] ?? 'exact');
+            if ($mode === 'quote') {
+                $prescription = 0.0;
+            } else {
+                $prescription = isset($cart['prescription']['price'])
+                    ? (float) $cart['prescription']['price']
+                    : (float) config('storefront.prescription_price', 0);
+            }
+            if ($prescription < 0) {
+                $prescription = 0.0;
+            }
         }
 
         $lens = self::lensPrice($cart['lens_coating_id'] ?? null);

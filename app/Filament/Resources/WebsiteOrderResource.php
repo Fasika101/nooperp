@@ -71,7 +71,8 @@ class WebsiteOrderResource extends Resource
                     ->columns(2),
                 Section::make('Order')
                     ->schema([
-                        TextInput::make('external_ref')->label('Web / Chapa ref')->disabled(),
+                        TextInput::make('external_ref')->label('Order ref (NOOP)')->disabled(),
+                        TextInput::make('chapa_reference')->label('Chapa reference')->disabled(),
                         TextInput::make('total_amount')->prefix($currency)->disabled(),
                         TextInput::make('payment_status')->disabled(),
                         Select::make('shipping_status')
@@ -105,9 +106,14 @@ class WebsiteOrderResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('id')->label('#')->sortable(),
                 Tables\Columns\TextColumn::make('external_ref')
-                    ->label('Ref')
+                    ->label('Order ref')
                     ->searchable()
                     ->copyable(),
+                Tables\Columns\TextColumn::make('chapa_reference')
+                    ->label('Chapa ref')
+                    ->searchable()
+                    ->copyable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('customer.name')
                     ->searchable()
                     ->sortable(),

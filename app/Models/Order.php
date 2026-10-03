@@ -34,6 +34,7 @@ class Order extends Model
         'status',
         'source',
         'external_ref',
+        'chapa_reference',
         'shipping_status',
     ];
 

@@ -4,11 +4,9 @@
 
 @section('content')
     @if($paid ?? false)
-        <p class="page-kicker anim-in">Payment</p>
         <h1 class="page-title anim-in">Payment successful</h1>
         <p class="page-sub anim-in">Thank you. Your payment was received and your order is in our system.</p>
     @else
-        <p class="page-kicker anim-in">Payment</p>
         <h1 class="page-title anim-in">Confirming payment…</h1>
         <p class="page-sub anim-in">
             @if($ref)
@@ -21,8 +19,13 @@
 
     @if($order)
         <div class="card success-card anim-in" style="padding:1.15rem;">
-            <p style="margin:0 0 0.35rem;color:var(--ink-soft);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:700;">Transaction reference</p>
+            <p style="margin:0 0 0.35rem;color:var(--ink-soft);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:700;">Order reference</p>
             <p style="margin:0 0 1rem;font-weight:700;font-size:1.15rem;letter-spacing:0.02em;">{{ $order->external_ref }}</p>
+
+            @if($order->chapa_reference || !empty($chapaReference))
+                <p style="margin:0 0 0.35rem;color:var(--ink-soft);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:700;">Chapa reference</p>
+                <p style="margin:0 0 1rem;font-weight:700;font-size:1.05rem;letter-spacing:0.02em;">{{ $order->chapa_reference ?: $chapaReference }}</p>
+            @endif
 
             <p style="margin:0 0 0.35rem;color:var(--ink-soft);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:700;">Amount paid</p>
             <p style="margin:0 0 1rem;font-weight:700;font-size:1.35rem;color:var(--accent);">{{ $currency }} {{ number_format($order->total_amount, 2) }}</p>

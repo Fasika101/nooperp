@@ -35,7 +35,9 @@ Route::prefix('shop')->name('shop.')->group(function () {
     Route::post('/cart/prescription', [CartController::class, 'uploadPrescription'])->name('cart.prescription');
     Route::delete('/cart/prescription', [CartController::class, 'clearPrescription'])->name('cart.prescription.clear');
     Route::post('/cart/options', [CartController::class, 'updateOptions'])->name('cart.options');
-    Route::post('/checkout', [CartController::class, 'checkout'])->name('checkout');
+    Route::post('/cart/continue', [CartController::class, 'continueToCheckout'])->name('cart.continue');
+    Route::get('/checkout', [CartController::class, 'checkoutForm'])->name('checkout');
+    Route::post('/checkout', [CartController::class, 'checkout'])->name('checkout.pay');
     Route::match(['get', 'post'], '/chapa/callback', [CartController::class, 'chapaCallback'])->name('chapa.callback');
     Route::get('/success', [CartController::class, 'success'])->name('success');
 });

@@ -87,20 +87,166 @@ class GeminiPrescriptionScanner
 
     /**
      * Price lenses from ERP Optical Rx config using scanned values.
+     *
+     * @deprecated Prefer quoteFromScan() for exact / range / quote modes.
      */
     public function priceFromScan(array $scan): float
     {
+        $quote = $this->quoteFromScan($scan);
+
+        return (float) ($quote['price'] ?? 0);
+    }
+
+    /**
+     * Build an ERP-based lens price quote from a scan.
+     *
+     * @return array{
+     *   mode: 'exact'|'range'|'quote',
+     *   price: float,
+     *   price_min: ?float,
+     *   price_max: ?float,
+     *   label: string,
+     *   note: string,
+     *   vision: string
+     * }
+     */
+    public function quoteFromScan(array $scan): array
+    {
+        $confidence = (string) ($scan['confidence'] ?? 'medium');
+        $visionRaw = (string) ($scan['vision_type_raw'] ?? $scan['vision_type'] ?? 'single');
         $vision = ($scan['vision_type'] ?? 'single') === 'progressive' ? 'progressive' : 'single';
 
-        return OpticalRxConfig::prescriptionAddOn(
-            $vision,
-            $scan['right_eye']['sph'] ?? null,
-            $scan['right_eye']['cyl'] ?? null,
-            $scan['left_eye']['sph'] ?? null,
-            $scan['left_eye']['cyl'] ?? null,
-            $scan['right_eye']['add'] ?? null,
-            $scan['left_eye']['add'] ?? null,
-        );
+        $odSph = $scan['right_eye']['sph'] ?? null;
+        $odCyl = $scan['right_eye']['cyl'] ?? null;
+        $odAdd = $scan['right_eye']['add'] ?? null;
+        $osSph = $scan['left_eye']['sph'] ?? null;
+        $osCyl = $scan['left_eye']['cyl'] ?? null;
+        $osAdd = $scan['left_eye']['add'] ?? null;
+
+        $primary = OpticalRxConfig::prescriptionAddOn($vision, $odSph, $odCyl, $osSph, $osCyl, $odAdd, $osAdd);
+
+        // Beyond ERP tiers — POS would enter a custom price
+        if ($primary === OpticalRxConfig::COMPOUND_CUSTOM_SENTINEL) {
+            $tier1 = OpticalRxConfig::getCompoundSvTier1Price();
+            $tier2 = OpticalRxConfig::getCompoundSvTier2Price();
+
+            return [
+                'mode' => 'quote',
+                'price' => 0.0,
+                'price_min' => $tier2 > 0 ? $tier2 : ($tier1 > 0 ? $tier1 : null),
+                'price_max' => null,
+                'label' => 'Quote after review',
+                'note' => 'This Rx is outside standard online tiers. Frame + coating can be paid now; final lens price is confirmed by the lab.',
+                'vision' => $vision,
+            ];
+        }
+
+        $candidates = [];
+        if ($primary > 0) {
+            $candidates[] = $primary;
+        }
+
+        // If Gemini was unsure about single vs progressive, price both
+        if ($visionRaw === 'unknown' || $confidence !== 'high') {
+            $altVision = $vision === 'progressive' ? 'single' : 'progressive';
+            $alt = OpticalRxConfig::prescriptionAddOn($altVision, $odSph, $odCyl, $osSph, $osCyl, $odAdd, $osAdd);
+            if ($alt !== OpticalRxConfig::COMPOUND_CUSTOM_SENTINEL && $alt > 0) {
+                $candidates[] = $alt;
+            }
+        }
+
+        // Single-vision compound: nearby tier as a soft range when confidence isn't high
+        if ($vision === 'single' && $confidence !== 'high') {
+            $hasSph = filled($odSph) || filled($osSph);
+            $hasCyl = filled($odCyl) || filled($osCyl);
+            if ($hasSph && $hasCyl) {
+                $t1 = OpticalRxConfig::getCompoundSvTier1Price();
+                $t2 = OpticalRxConfig::getCompoundSvTier2Price();
+                if ($t1 > 0) {
+                    $candidates[] = $t1;
+                }
+                if ($t2 > 0) {
+                    $candidates[] = $t2;
+                }
+            }
+        }
+
+        // Progressive: when ADD is present, include both ADD tiers as a soft range
+        if ($vision === 'progressive' && $confidence !== 'high') {
+            $hasAdd = filled($odAdd) || filled($osAdd);
+            if ($hasAdd) {
+                $a1 = OpticalRxConfig::getProgressiveAddTier1Price();
+                $a2 = OpticalRxConfig::getProgressiveAddTier2Price();
+                if ($a1 > 0) {
+                    $candidates[] = $a1;
+                }
+                if ($a2 > 0) {
+                    $candidates[] = $a2;
+                }
+                // If primary already stacked (−SPH/CYL + ADD), shift by the other ADD tier delta
+                if ($primary > 0 && $a1 > 0 && $a2 > 0) {
+                    $candidates[] = max(0, $primary + ($a2 - $a1));
+                    $candidates[] = max(0, $primary - ($a2 - $a1));
+                }
+            }
+        }
+
+        $candidates = array_values(array_unique(array_map(fn ($v) => round((float) $v, 2), $candidates)));
+        sort($candidates);
+
+        if ($candidates === []) {
+            return [
+                'mode' => 'quote',
+                'price' => 0.0,
+                'price_min' => null,
+                'price_max' => null,
+                'label' => 'Quote after review',
+                'note' => 'We could not match this Rx to online lens prices. Pay for the frame now — lens price confirmed after review.',
+                'vision' => $vision,
+            ];
+        }
+
+        $min = $candidates[0];
+        $max = $candidates[array_key_last($candidates)];
+        $charge = $primary > 0 ? round($primary, 2) : round(($min + $max) / 2, 2);
+
+        // Exact when high confidence and a single clear ERP price
+        if ($confidence === 'high' && abs($max - $min) < 0.01 && $primary > 0) {
+            return [
+                'mode' => 'exact',
+                'price' => round($primary, 2),
+                'price_min' => round($primary, 2),
+                'price_max' => round($primary, 2),
+                'label' => 'Lens price',
+                'note' => 'Priced from your scanned prescription using ERP lens tiers.',
+                'vision' => $vision,
+            ];
+        }
+
+        // Still treat as exact if min==max even with medium confidence
+        if (abs($max - $min) < 0.01) {
+            return [
+                'mode' => 'exact',
+                'price' => $min,
+                'price_min' => $min,
+                'price_max' => $max,
+                'label' => 'Lens price',
+                'note' => 'Priced from your scanned prescription using ERP lens tiers.',
+                'vision' => $vision,
+            ];
+        }
+
+        return [
+            'mode' => 'range',
+            'price' => $charge,
+            'price_min' => $min,
+            'price_max' => $max,
+            'label' => 'Estimated lens range',
+            'note' => $confidence === 'low'
+                ? 'Image was hard to read — final lens price may be adjusted after review.'
+                : 'Estimated from ERP lens tiers. Final price confirmed if values need a lab check.',
+            'vision' => $vision,
+        ];
     }
 
     protected function prompt(): string
@@ -172,22 +318,24 @@ PROMPT;
      */
     protected function normalize(array $data): array
     {
+        $visionRaw = (string) ($data['vision_type'] ?? 'unknown');
+        $vision = in_array($visionRaw, ['single', 'progressive'], true) ? $visionRaw : 'single';
+
         return [
             'is_prescription' => (bool) ($data['is_prescription'] ?? true),
-            'vision_type' => in_array($data['vision_type'] ?? '', ['single', 'progressive'], true)
-                ? $data['vision_type']
-                : 'single',
+            'vision_type' => $vision,
+            'vision_type_raw' => in_array($visionRaw, ['single', 'progressive', 'unknown'], true) ? $visionRaw : 'unknown',
             'right_eye' => [
-                'sph' => $data['right_eye']['sph'] ?? null,
-                'cyl' => $data['right_eye']['cyl'] ?? null,
+                'sph' => $this->normalizePower($data['right_eye']['sph'] ?? null),
+                'cyl' => $this->normalizePower($data['right_eye']['cyl'] ?? null),
                 'axis' => $data['right_eye']['axis'] ?? null,
-                'add' => $data['right_eye']['add'] ?? null,
+                'add' => $this->normalizeAdd($data['right_eye']['add'] ?? null),
             ],
             'left_eye' => [
-                'sph' => $data['left_eye']['sph'] ?? null,
-                'cyl' => $data['left_eye']['cyl'] ?? null,
+                'sph' => $this->normalizePower($data['left_eye']['sph'] ?? null),
+                'cyl' => $this->normalizePower($data['left_eye']['cyl'] ?? null),
                 'axis' => $data['left_eye']['axis'] ?? null,
-                'add' => $data['left_eye']['add'] ?? null,
+                'add' => $this->normalizeAdd($data['left_eye']['add'] ?? null),
             ],
             'pd' => [
                 'type' => $data['pd']['type'] ?? 'none',
@@ -195,8 +343,38 @@ PROMPT;
                 'right' => $data['pd']['right'] ?? null,
                 'left' => $data['pd']['left'] ?? null,
             ],
-            'confidence' => $data['confidence'] ?? 'medium',
+            'confidence' => in_array($data['confidence'] ?? '', ['high', 'medium', 'low'], true)
+                ? $data['confidence']
+                : 'medium',
             'notes' => (string) ($data['notes'] ?? ''),
         ];
+    }
+
+    protected function normalizePower(mixed $raw): ?string
+    {
+        $normalized = OpticalRxConfig::normalizeDiopterValue($raw);
+        if ($normalized === null) {
+            return null;
+        }
+
+        // Snap to nearest 0.25 so ERP diopter table lookups match
+        $snapped = round(((float) $normalized) / 0.25) * 0.25;
+
+        return number_format($snapped, 2, '.', '');
+    }
+
+    protected function normalizeAdd(mixed $raw): ?string
+    {
+        $normalized = OpticalRxConfig::normalizeAddValue($raw);
+        if ($normalized === null) {
+            return null;
+        }
+
+        $snapped = round(((float) $normalized) / 0.25) * 0.25;
+        if ($snapped < 0 || $snapped > 10.0) {
+            return null;
+        }
+
+        return number_format($snapped, 2, '.', '');
     }
 }

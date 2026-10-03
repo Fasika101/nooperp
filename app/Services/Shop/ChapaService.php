@@ -78,12 +78,34 @@ class ChapaService
     }
 
     /**
-     * @return array{ok:bool,verified:bool,error:?string}
+     * Verify a transaction with Chapa and return useful payment fields.
+     *
+     * @return array{
+     *   ok:bool,
+     *   verified:bool,
+     *   error:?string,
+     *   reference:?string,
+     *   tx_ref:?string,
+     *   amount:?float,
+     *   currency:?string,
+     *   status:?string,
+     *   raw:?array
+     * }
      */
     public function verify(string $txRef): array
     {
         if (! $this->isConfigured()) {
-            return ['ok' => false, 'verified' => false, 'error' => 'Chapa is not configured.'];
+            return [
+                'ok' => false,
+                'verified' => false,
+                'error' => 'Chapa is not configured.',
+                'reference' => null,
+                'tx_ref' => null,
+                'amount' => null,
+                'currency' => null,
+                'status' => null,
+                'raw' => null,
+            ];
         }
 
         $secret = (string) config('storefront.chapa.secret_key');
@@ -95,33 +117,57 @@ class ChapaService
             ->get($base.'/transaction/verify/'.urlencode($txRef));
 
         if (! $response->successful()) {
-            return ['ok' => false, 'verified' => false, 'error' => $response->body()];
+            return [
+                'ok' => false,
+                'verified' => false,
+                'error' => $response->body(),
+                'reference' => null,
+                'tx_ref' => null,
+                'amount' => null,
+                'currency' => null,
+                'status' => null,
+                'raw' => null,
+            ];
         }
 
         $data = $response->json();
-        $verified = ($data['status'] ?? null) === 'success'
-            && ($data['data']['status'] ?? null) === 'success';
+        $payload = is_array($data['data'] ?? null) ? $data['data'] : [];
+        $status = isset($payload['status']) ? (string) $payload['status'] : null;
+        $verified = ($data['status'] ?? null) === 'success' && $status === 'success';
 
-        return ['ok' => true, 'verified' => $verified, 'error' => null];
+        $reference = $payload['reference'] ?? $payload['chapa_reference'] ?? null;
+        if (is_array($reference)) {
+            $reference = $this->stringifyError($reference);
+        }
+
+        return [
+            'ok' => true,
+            'verified' => $verified,
+            'error' => null,
+            'reference' => is_string($reference) && $reference !== '' ? $reference : null,
+            'tx_ref' => isset($payload['tx_ref']) ? (string) $payload['tx_ref'] : $txRef,
+            'amount' => isset($payload['amount']) ? (float) $payload['amount'] : null,
+            'currency' => isset($payload['currency']) ? (string) $payload['currency'] : null,
+            'status' => $status,
+            'raw' => is_array($data) ? $data : null,
+        ];
     }
 
     /**
-     * Sequential refs: NOOP-000001, NOOP-000002, …
+     * Sequential + unique refs for Chapa.
+     * Format: NOOP-000007-a3f9c2
+     *
+     * Chapa rejects any tx_ref that was ever initialized before — even abandoned
+     * checkouts — so a short random suffix is required on top of the sequence.
      */
     public function makeTxRef(): string
     {
         return DB::transaction(function () {
             $row = Setting::query()->where('key', 'shop_noop_seq')->lockForUpdate()->first();
             $fromSetting = (int) ($row?->value ?? 0);
-            $fromOrders = 0;
-            $lastRef = Order::query()
-                ->where('external_ref', 'like', 'NOOP-%')
-                ->orderByDesc('id')
-                ->value('external_ref');
-            if (is_string($lastRef) && preg_match('/^NOOP-(\d+)$/', $lastRef, $m)) {
-                $fromOrders = (int) $m[1];
-            }
-            $next = max($fromSetting, $fromOrders) + 1;
+            $fromOrders = $this->highestNoopSeqFromOrders();
+            $fromPending = $this->highestNoopSeqFromPending();
+            $next = max($fromSetting, $fromOrders, $fromPending) + 1;
 
             Setting::query()->updateOrCreate(
                 ['key' => 'shop_noop_seq'],
@@ -129,20 +175,62 @@ class ChapaService
             );
             Cache::forget('settings');
 
-            // Ensure uniqueness even if an old row used the same style
-            $ref = 'NOOP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
-            while (Order::query()->where('external_ref', $ref)->exists()) {
-                $next++;
-                Setting::query()->updateOrCreate(
-                    ['key' => 'shop_noop_seq'],
-                    ['value' => (string) $next],
-                );
-                Cache::forget('settings');
-                $ref = 'NOOP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
-            }
+            $base = 'NOOP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+            do {
+                $ref = $base.'-'.strtolower(bin2hex(random_bytes(3)));
+            } while (
+                Order::query()->where('external_ref', $ref)->exists()
+                || \Illuminate\Support\Facades\Storage::disk('local')->exists('shop/pending/'.$ref.'.json')
+            );
 
             return $ref;
         });
+    }
+
+    protected function highestNoopSeqFromOrders(): int
+    {
+        $max = 0;
+        $refs = Order::query()
+            ->where('external_ref', 'like', 'NOOP-%')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->pluck('external_ref');
+
+        foreach ($refs as $ref) {
+            if (is_string($ref) && preg_match('/^NOOP-(\d+)/', $ref, $m)) {
+                $max = max($max, (int) $m[1]);
+            }
+        }
+
+        return $max;
+    }
+
+    protected function highestNoopSeqFromPending(): int
+    {
+        $max = 0;
+        $files = \Illuminate\Support\Facades\Storage::disk('local')->files('shop/pending');
+        foreach ($files as $file) {
+            $name = pathinfo($file, PATHINFO_FILENAME);
+            if (preg_match('/^NOOP-(\d+)/', $name, $m)) {
+                $max = max($max, (int) $m[1]);
+            }
+        }
+
+        return $max;
+    }
+
+    public function errorLooksLikeDuplicateRef(?string $error): bool
+    {
+        if ($error === null || $error === '') {
+            return false;
+        }
+
+        $hay = strtolower($error);
+
+        return str_contains($hay, 'used before')
+            || str_contains($hay, 'already been used')
+            || str_contains($hay, 'already used')
+            || (str_contains($hay, 'duplicate') && str_contains($hay, 'ref'));
     }
 
     protected function firstName(string $name): string
