@@ -39,7 +39,7 @@ class ProductController extends Controller
                 'brand:id,name',
                 'variants.colorOption:id,name,type',
                 'variants.sizeOption:id,name,type',
-                'variants.branchStocks' => fn ($q) => $q->where('branch_id', $branchId),
+                'variants.branchStocks',
             ])
             ->orderBy('name');
 
@@ -53,7 +53,7 @@ class ProductController extends Controller
 
         $paginator = $query->paginate($perPage);
 
-        $data = collect($paginator->items())->map(fn (Product $product) => $this->serializeProduct($product, $branchId));
+        $data = collect($paginator->items())->map(fn (Product $product) => $this->serializeProduct($product));
 
         return response()->json([
             'data' => $data,
@@ -63,14 +63,13 @@ class ProductController extends Controller
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
                 'branch_id' => $branchId,
+                'stock_scope' => 'all_branches',
             ],
         ]);
     }
 
     public function show(int $id): JsonResponse
     {
-        $branchId = (int) config('storefront.branch_id');
-
         $product = Product::query()
             ->where('is_service', false)
             ->with([
@@ -78,7 +77,7 @@ class ProductController extends Controller
                 'brand:id,name',
                 'variants.colorOption:id,name,type',
                 'variants.sizeOption:id,name,type',
-                'variants.branchStocks' => fn ($q) => $q->where('branch_id', $branchId),
+                'variants.branchStocks',
             ])
             ->find($id);
 
@@ -86,13 +85,13 @@ class ProductController extends Controller
             return response()->json(['message' => 'Product not found'], 404);
         }
 
-        return response()->json(['data' => $this->serializeProduct($product, $branchId)]);
+        return response()->json(['data' => $this->serializeProduct($product)]);
     }
 
     /**
      * @return array<string, mixed>
      */
-    protected function serializeProduct(Product $product, int $branchId): array
+    protected function serializeProduct(Product $product): array
     {
         $variants = $product->variants->map(function (ProductVariant $variant) {
             $qty = (int) $variant->branchStocks->sum('quantity');

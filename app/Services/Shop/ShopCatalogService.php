@@ -12,6 +12,10 @@ use Illuminate\Support\Facades\Storage;
 
 class ShopCatalogService
 {
+    /**
+     * Preferred fulfillment branch (orders / payments still anchored here).
+     * Catalog stock is summed across ALL branches.
+     */
     public function branchId(): int
     {
         return (int) config('storefront.branch_id');
@@ -87,19 +91,19 @@ class ShopCatalogService
     }
 
     /**
+     * Frames in stock for a gender — stock is total across ALL branches.
+     *
      * @return Collection<int, array<string, mixed>>
      */
     public function framesForGender(int $genderOptionId): Collection
     {
-        $branchId = $this->branchId();
-
         $products = Product::query()
             ->where('is_service', false)
             ->where('gender_option_id', $genderOptionId)
             ->with([
                 'variants.colorOption:id,name',
                 'variants.sizeOption:id,name',
-                'variants.branchStocks' => fn ($q) => $q->where('branch_id', $branchId),
+                'variants.branchStocks',
                 'brand:id,name',
             ])
             ->orderBy('name')
@@ -113,15 +117,13 @@ class ShopCatalogService
 
     public function frame(int $productId): ?array
     {
-        $branchId = $this->branchId();
-
         $product = Product::query()
             ->where('is_service', false)
             ->with([
                 'gender:id,name',
                 'variants.colorOption:id,name',
                 'variants.sizeOption:id,name',
-                'variants.branchStocks' => fn ($q) => $q->where('branch_id', $branchId),
+                'variants.branchStocks',
                 'brand:id,name',
             ])
             ->find($productId);
@@ -200,13 +202,12 @@ class ShopCatalogService
 
     /**
      * Resolve a concrete in-stock variant for color (+ optional size).
+     * Quantity is total across ALL branches.
      *
      * @return array{variant:ProductVariant,quantity:int}|null
      */
     public function resolveInStockVariant(int $productId, ?int $colorOptionId, ?int $sizeOptionId): ?array
     {
-        $branchId = $this->branchId();
-
         $query = ProductVariant::query()
             ->where('product_id', $productId)
             ->when(
@@ -221,10 +222,7 @@ class ShopCatalogService
 
         $variants = $query->get();
         foreach ($variants as $variant) {
-            $qty = (int) BranchProductStock::query()
-                ->where('branch_id', $branchId)
-                ->where('product_variant_id', $variant->id)
-                ->value('quantity');
+            $qty = $this->totalStockForVariant((int) $variant->id);
             if ($qty > 0) {
                 return ['variant' => $variant, 'quantity' => $qty];
             }
@@ -245,10 +243,7 @@ class ShopCatalogService
             ->get();
 
         foreach ($fallback as $variant) {
-            $qty = (int) BranchProductStock::query()
-                ->where('branch_id', $branchId)
-                ->where('product_variant_id', $variant->id)
-                ->value('quantity');
+            $qty = $this->totalStockForVariant((int) $variant->id);
             if ($qty > 0) {
                 return ['variant' => $variant, 'quantity' => $qty];
             }
@@ -262,6 +257,41 @@ class ShopCatalogService
         $resolved = $this->resolveInStockVariant($productId, $colorOptionId, $sizeOptionId);
 
         return $resolved['quantity'] ?? 0;
+    }
+
+    public function totalStockForVariant(int $variantId): int
+    {
+        return (int) BranchProductStock::query()
+            ->where('product_variant_id', $variantId)
+            ->sum('quantity');
+    }
+
+    /**
+     * Decrement stock from a branch that has enough quantity.
+     * Prefers STOREFRONT_BRANCH_ID, then the branch with the most stock.
+     *
+     * @return int|null Branch id stock was taken from, or null if insufficient
+     */
+    public function claimStock(int $variantId, int $qty): ?int
+    {
+        $qty = max(1, $qty);
+        $preferred = $this->branchId();
+
+        $stock = BranchProductStock::query()
+            ->where('product_variant_id', $variantId)
+            ->where('quantity', '>=', $qty)
+            ->orderByRaw('CASE WHEN branch_id = ? THEN 0 ELSE 1 END', [$preferred])
+            ->orderByDesc('quantity')
+            ->lockForUpdate()
+            ->first();
+
+        if (! $stock) {
+            return null;
+        }
+
+        $stock->decrement('quantity', $qty);
+
+        return (int) $stock->branch_id;
     }
 
     protected function imageUrl(?string $image): ?string

@@ -10,7 +10,7 @@ return [
 
     'api_token' => env('STOREFRONT_API_TOKEN'),
 
-    /** Branch used for online stock + order fulfillment */
+    /** Preferred branch for online order records / payments. Catalog stock uses ALL branches. */
     'branch_id' => (int) env('STOREFRONT_BRANCH_ID', 1),
 
     /** PaymentType id for online gateways (e.g. Chapa). Auto-created/linked if empty. */

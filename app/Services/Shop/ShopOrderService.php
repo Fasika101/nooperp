@@ -2,7 +2,6 @@
 
 namespace App\Services\Shop;
 
-use App\Models\BranchProductStock;
 use App\Models\Customer;
 use App\Models\OpticalLensNoPrescription;
 use App\Models\Order;
@@ -101,27 +100,13 @@ class ShopOrderService
                 $colorOptionId = $variant->color_option_id ? (int) $variant->color_option_id : null;
                 $sizeOptionId = $variant->size_option_id ? (int) $variant->size_option_id : null;
 
-                $branchStock = BranchProductStock::query()
-                    ->where('branch_id', $branchId)
-                    ->where('product_variant_id', $variant->id)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (! $branchStock) {
-                    $branchStock = BranchProductStock::create([
-                        'branch_id' => $branchId,
-                        'product_variant_id' => $variant->id,
-                        'quantity' => 0,
-                    ]);
-                }
-
-                if ($branchStock->quantity < $qty) {
+                $catalog = app(ShopCatalogService::class);
+                $stockBranchId = $catalog->claimStock((int) $variant->id, $qty);
+                if ($stockBranchId === null) {
                     throw ValidationException::withMessages([
                         'cart' => "Insufficient stock for {$product->name}",
                     ]);
                 }
-
-                $branchStock->decrement('quantity', $qty);
 
                 $prepared[] = [
                     'product_id' => $product->id,
@@ -131,7 +116,10 @@ class ShopOrderService
                     'quantity' => $qty,
                     'price' => round((float) ($item['price'] ?? $product->price), 2),
                     'unit_cost' => (float) ($product->cost_price ?? 0),
-                    'optical_meta' => null,
+                    'optical_meta' => [
+                        'route' => 'shop',
+                        'stock_branch_id' => $stockBranchId,
+                    ],
                 ];
             }
 

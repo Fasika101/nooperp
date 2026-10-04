@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\Storefront;
 
 use App\Http\Controllers\Controller;
-use App\Models\BranchProductStock;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -116,27 +115,22 @@ class OrderController extends Controller
                             $variant = ProductVariant::findOrCreateForProduct($product->id, $colorOptionId, $sizeOptionId);
                         }
 
-                        $branchStock = BranchProductStock::query()
-                            ->where('branch_id', $branchId)
-                            ->where('product_variant_id', $variant->id)
-                            ->lockForUpdate()
-                            ->first();
+                        $stockBranchId = app(\App\Services\Shop\ShopCatalogService::class)
+                            ->claimStock((int) $variant->id, $qty);
 
-                        if (! $branchStock) {
-                            $branchStock = BranchProductStock::create([
-                                'branch_id' => $branchId,
-                                'product_variant_id' => $variant->id,
-                                'quantity' => 0,
-                            ]);
-                        }
-
-                        if ($branchStock->quantity < $qty) {
+                        if ($stockBranchId === null) {
                             throw ValidationException::withMessages([
                                 'items' => "Insufficient stock for {$product->name}",
                             ]);
                         }
 
-                        $branchStock->decrement('quantity', $qty);
+                        $meta = $item['optical_meta'] ?? null;
+                        if (! is_array($meta)) {
+                            $meta = [];
+                        }
+                        $meta['stock_branch_id'] = $stockBranchId;
+                    } else {
+                        $meta = $item['optical_meta'] ?? null;
                     }
 
                     $lineLabel = $item['line_label']
@@ -150,7 +144,7 @@ class OrderController extends Controller
                         'quantity' => $qty,
                         'price' => $unitPrice,
                         'unit_cost' => (float) ($product->cost_price ?? 0),
-                        'optical_meta' => $item['optical_meta'] ?? null,
+                        'optical_meta' => $meta,
                     ];
 
                     $lineTotal += $unitPrice * $qty;
