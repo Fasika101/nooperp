@@ -110,7 +110,7 @@
                 @endif
             @else
                 <label class="upload" id="rx-upload-label">
-                    <input type="file" accept="image/*" capture="environment" id="rx-file">
+                <input type="file" accept="image/*" id="rx-file">
                     <span id="rx-upload-text">Scan / upload prescription</span>
                 </label>
             @endif
