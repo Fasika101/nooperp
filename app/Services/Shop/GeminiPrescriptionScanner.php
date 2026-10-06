@@ -136,7 +136,7 @@ class GeminiPrescriptionScanner
                 'price_min' => $tier2 > 0 ? $tier2 : ($tier1 > 0 ? $tier1 : null),
                 'price_max' => null,
                 'label' => 'Quote after review',
-                'note' => 'This Rx is outside standard online tiers. Frame + coating can be paid now; final lens price is confirmed by the lab.',
+                'note' => 'This prescription needs a lab review. Frame + coating can be paid now; final lens price is confirmed later.',
                 'vision' => $vision,
             ];
         }
@@ -201,7 +201,7 @@ class GeminiPrescriptionScanner
                 'price_min' => null,
                 'price_max' => null,
                 'label' => 'Quote after review',
-                'note' => 'We could not match this Rx to online lens prices. Pay for the frame now — lens price confirmed after review.',
+                'note' => 'We could not match this prescription to standard lens prices. Pay for the frame now — lens price confirmed after review.',
                 'vision' => $vision,
             ];
         }
@@ -218,7 +218,7 @@ class GeminiPrescriptionScanner
                 'price_min' => round($primary, 2),
                 'price_max' => round($primary, 2),
                 'label' => 'Lens price',
-                'note' => 'Priced from your scanned prescription using ERP lens tiers.',
+                'note' => 'Priced from your scanned prescription.',
                 'vision' => $vision,
             ];
         }
@@ -231,7 +231,7 @@ class GeminiPrescriptionScanner
                 'price_min' => $min,
                 'price_max' => $max,
                 'label' => 'Lens price',
-                'note' => 'Priced from your scanned prescription using ERP lens tiers.',
+                'note' => 'Priced from your scanned prescription.',
                 'vision' => $vision,
             ];
         }
@@ -244,7 +244,7 @@ class GeminiPrescriptionScanner
             'label' => 'Estimated lens range',
             'note' => $confidence === 'low'
                 ? 'Image was hard to read — final lens price may be adjusted after review.'
-                : 'Estimated from ERP lens tiers. Final price confirmed if values need a lab check.',
+                : 'Estimated from your scanned prescription. Final price confirmed if values need a lab check.',
             'vision' => $vision,
         ];
     }

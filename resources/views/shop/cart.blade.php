@@ -44,6 +44,14 @@
                     $priceMax = $cart['prescription']['price_max'] ?? ($scan['pricing']['price_max'] ?? null);
                     $priceLabel = $cart['prescription']['price_label'] ?? ($scan['pricing']['label'] ?? 'Lens price');
                     $priceNote = $cart['prescription']['price_note'] ?? ($scan['pricing']['note'] ?? '');
+                    // Hide internal pricing jargon from older scans
+                    $priceNote = is_string($priceNote)
+                        ? trim(str_ireplace([' using ERP lens tiers', ' from ERP lens tiers', 'ERP lens tiers'], '', $priceNote))
+                        : '';
+                    $visionType = ($scan['vision_type'] ?? $cart['prescription']['vision_type'] ?? 'single') === 'progressive'
+                        ? 'progressive'
+                        : 'single';
+                    $visionLabel = $visionType === 'progressive' ? 'Progressive prescription' : 'Single prescription';
                     $chargePrice = (float) ($cart['prescription']['price'] ?? $prescriptionPrice);
                     if ($priceMode === 'range' && $priceMin !== null && $priceMax !== null && (float) $priceMax > (float) $priceMin) {
                         $priceDisplay = $currency.' '.number_format((float) $priceMin, 2).' – '.number_format((float) $priceMax, 2);
@@ -55,10 +63,9 @@
                 @endphp
                 <div class="rx-ok">
                     <div class="rx-ok-main">
-                        <span>Prescription scanned</span>
+                        <span>{{ $visionLabel }}</span>
                         <small>
-                            {{ ucfirst($scan['vision_type'] ?? 'single') }}
-                            · {{ $priceLabel }}: {{ $priceDisplay }}
+                            {{ $priceLabel }}: {{ $priceDisplay }}
                             @if(!empty($scan['confidence']))
                                 · {{ $scan['confidence'] }} confidence
                             @endif
@@ -74,12 +81,16 @@
                 @endif
                 @if(!empty($scan['right_eye']) || !empty($scan['left_eye']))
                     <div class="rx-values card">
+                        <div class="rx-type-row">
+                            <strong>Type</strong>
+                            <span class="rx-type-badge {{ $visionType === 'progressive' ? 'is-progressive' : 'is-single' }}">{{ $visionLabel }}</span>
+                        </div>
                         <div class="rx-eye">
                             <strong>OD (Right)</strong>
                             <span>SPH {{ $scan['right_eye']['sph'] ?? '—' }}</span>
                             <span>CYL {{ $scan['right_eye']['cyl'] ?? '—' }}</span>
                             <span>AXIS {{ $scan['right_eye']['axis'] ?? '—' }}</span>
-                            @if(($scan['vision_type'] ?? '') === 'progressive')
+                            @if($visionType === 'progressive')
                                 <span>ADD {{ $scan['right_eye']['add'] ?? '—' }}</span>
                             @endif
                         </div>
@@ -88,7 +99,7 @@
                             <span>SPH {{ $scan['left_eye']['sph'] ?? '—' }}</span>
                             <span>CYL {{ $scan['left_eye']['cyl'] ?? '—' }}</span>
                             <span>AXIS {{ $scan['left_eye']['axis'] ?? '—' }}</span>
-                            @if(($scan['vision_type'] ?? '') === 'progressive')
+                            @if($visionType === 'progressive')
                                 <span>ADD {{ $scan['left_eye']['add'] ?? '—' }}</span>
                             @endif
                         </div>
@@ -233,6 +244,22 @@
         .rx-values {
             margin-top: 0.65rem; padding: 0.9rem 1rem;
             display: grid; gap: 0.65rem;
+        }
+        .rx-type-row {
+            display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;
+            font-size: 0.85rem;
+        }
+        .rx-type-row strong { min-width: 5.5rem; color: #1e3a8a; }
+        .rx-type-badge {
+            display: inline-flex; align-items: center;
+            padding: 0.25rem 0.7rem; border-radius: 999px;
+            font-size: 0.75rem; font-weight: 700;
+        }
+        .rx-type-badge.is-single {
+            background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;
+        }
+        .rx-type-badge.is-progressive {
+            background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe;
         }
         .rx-eye, .rx-pd {
             display: flex; flex-wrap: wrap; gap: 0.45rem 0.85rem;

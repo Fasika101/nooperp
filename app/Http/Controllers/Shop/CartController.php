@@ -150,10 +150,14 @@ class CartController extends Controller
 
         ShopCart::setPrescription($path, $scan, $price, $record->id, true, $quote);
 
+        $visionLabel = (($scan['vision_type'] ?? '') === 'progressive')
+            ? 'Progressive prescription'
+            : 'Single prescription';
+
         $msg = match ($quote['mode'] ?? 'exact') {
-            'range' => 'Prescription scanned — estimated lens price range applied.',
-            'quote' => 'Prescription scanned — lens price needs lab confirmation.',
-            default => 'Prescription scanned — lens price updated from ERP tiers.',
+            'range' => $visionLabel.' scanned — estimated lens price range applied.',
+            'quote' => $visionLabel.' scanned — lens price needs lab confirmation.',
+            default => $visionLabel.' scanned — lens price updated.',
         };
 
         return redirect()->route('shop.cart')->with('success', $msg);
