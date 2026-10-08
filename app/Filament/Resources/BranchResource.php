@@ -43,6 +43,12 @@ class BranchResource extends Resource
                     ->maxLength(255),
                 Textarea::make('address')
                     ->columnSpanFull(),
+                TextInput::make('google_maps_url')
+                    ->label('Google Maps link')
+                    ->url()
+                    ->maxLength(1000)
+                    ->columnSpanFull()
+                    ->helperText('Paste the share link from Google Maps (Share → Copy link). Used for the shop Location button.'),
                 Toggle::make('is_active')
                     ->default(true),
                 Toggle::make('is_default')
@@ -62,6 +68,11 @@ class BranchResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('phone')
                     ->placeholder('—'),
+                Tables\Columns\TextColumn::make('google_maps_url')
+                    ->label('Maps')
+                    ->limit(30)
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean(),

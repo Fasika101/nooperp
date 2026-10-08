@@ -28,6 +28,7 @@ Route::prefix('shop')->name('shop.')->group(function () {
     Route::get('/', [ShopController::class, 'gender'])->name('gender');
     Route::get('/gender/{genderId}', [ShopController::class, 'selectGender'])->name('gender.select')->whereNumber('genderId');
     Route::get('/frames', [ShopController::class, 'frames'])->name('frames');
+    Route::get('/search', [ShopController::class, 'search'])->name('search');
     Route::post('/cart/add', [ShopController::class, 'addToCart'])->name('cart.add');
 
     Route::get('/cart', [CartController::class, 'show'])->name('cart');

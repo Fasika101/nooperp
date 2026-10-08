@@ -1,14 +1,22 @@
 @extends('shop.layout')
 
-@section('title', $gender->name.' frames — '.$brand)
+@section('title', (!empty($isSearch) ? 'Search — '.$searchQuery : (($gender?->name ?? 'Frames').' frames')).' — '.$brand)
 
 @section('content')
     <div class="frames-head anim-in">
         <div>
-            <h1 class="page-title">{{ $gender->name }} frames</h1>
+            <h1 class="page-title">
+                @if(!empty($isSearch))
+                    Results for “{{ $searchQuery }}”
+                @else
+                    {{ $gender->name }} frames
+                @endif
+            </h1>
             <p class="page-sub" style="margin-bottom:0;">
                 @if(($totalFrames ?? $frames->count()) > 0)
                     Showing {{ $frames->count() }} of {{ $totalFrames ?? $frames->count() }} · page {{ $page ?? 1 }}
+                @elseif(!empty($isSearch))
+                    No in-stock frames matched that search.
                 @else
                     Choose color &amp; size, then add to cart.
                 @endif
@@ -18,7 +26,18 @@
 
     @if($frames->isEmpty())
         <div class="card" style="padding:1.5rem;">
-            <p style="margin:0;color:var(--ink-soft);">No frames with stock for {{ $gender->name }} right now.</p>
+            <p style="margin:0;color:var(--ink-soft);">
+                @if(!empty($isSearch))
+                    Try another name or brand, or browse by category below.
+                @else
+                    No frames with stock for {{ $gender->name }} right now.
+                @endif
+            </p>
+            @if(!empty($isSearch))
+                <p style="margin:1rem 0 0;">
+                    <a href="{{ route('shop.gender') }}" class="btn btn-primary" style="width:auto;display:inline-flex;">Browse by gender</a>
+                </p>
+            @endif
         </div>
     @else
         <div class="frame-grid">
@@ -33,12 +52,29 @@
                     <div class="frame-body">
                         <h2 class="frame-name">{{ $frame['name'] }}</h2>
                         <p class="frame-price">{{ $currency }} {{ number_format($frame['price'], 2) }}</p>
-                        <p class="frame-stock">{{ $frame['stock'] }} in stock</p>
+                        <p class="frame-stock">
+                            {{ $frame['stock'] }} in stock
+                            @if(!empty($isSearch) && !empty($frame['gender_name']))
+                                · {{ $frame['gender_name'] }}
+                            @endif
+                        </p>
                         <div class="frame-actions">
                             <button type="button" class="btn btn-ghost btn-sm try-btn"
                                 data-name="{{ $frame['name'] }}"
                                 data-image="{{ $frame['image'] }}"
                                 data-sku="{{ $frame['try_on_sku'] }}">Try</button>
+                            @if(!empty($frame['location']['maps_url']))
+                                <button type="button" class="btn btn-ghost btn-sm loc-btn"
+                                    data-maps-url="{{ $frame['location']['maps_url'] }}"
+                                    data-name="{{ $frame['location']['name'] }}"
+                                    aria-label="Open shop location in Google Maps"
+                                    title="{{ $frame['location']['name'] ?? 'Shop location' }}">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z"/>
+                                        <circle cx="12" cy="11" r="2.2"/>
+                                    </svg>
+                                </button>
+                            @endif
                             <button type="button" class="btn btn-primary btn-sm pick-btn" style="flex:1;" data-product-id="{{ $frame['id'] }}">Add</button>
                         </div>
                     </div>
@@ -47,13 +83,17 @@
         </div>
 
         @if(($lastPage ?? 1) > 1)
+            @php
+                $pagerRoute = !empty($isSearch) ? 'shop.search' : 'shop.frames';
+                $pagerBase = !empty($isSearch) ? ['q' => $searchQuery] : [];
+            @endphp
             <div class="frame-pager anim-in">
                 @if(($page ?? 1) > 1)
-                    <a href="{{ route('shop.frames', ['page' => $page - 1]) }}" class="btn btn-ghost">← Previous</a>
+                    <a href="{{ route($pagerRoute, $pagerBase + ['page' => $page - 1]) }}" class="btn btn-ghost">← Previous</a>
                 @endif
                 <span class="frame-pager-meta">{{ $page ?? 1 }} / {{ $lastPage }}</span>
                 @if(($page ?? 1) < ($lastPage ?? 1))
-                    <a href="{{ route('shop.frames', ['page' => $page + 1]) }}" class="btn btn-accent">Next →</a>
+                    <a href="{{ route($pagerRoute, $pagerBase + ['page' => $page + 1]) }}" class="btn btn-accent">Next →</a>
                 @endif
             </div>
         @endif
@@ -147,13 +187,34 @@
         .frame-name { font-size: 0.9rem; margin:0; font-weight:700; line-height:1.25; }
         .frame-price { margin:0; font-weight:700; color: var(--accent); font-size:0.9rem; }
         .frame-stock { margin:0; font-size:0.7rem; color: var(--ink-soft); }
-        .frame-actions { display:flex; gap:0.35rem; margin-top:auto; padding-top:0.5rem; }
+        .frame-actions {
+            display:flex; flex-wrap: wrap; gap:0.35rem; margin-top:auto; padding-top:0.5rem;
+        }
+        .frame-actions .btn { flex: 1 1 auto; min-width: 0; padding-left: 0.55rem; padding-right: 0.55rem; font-size: 0.75rem; }
         .frame-actions .pick-btn {
+            flex: 1 1 100%;
             background: var(--accent-btn);
             color: var(--accent-btn-text);
             border: 1px solid var(--accent-border);
             box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
         }
+        .frame-actions .loc-btn {
+            flex: 0 0 auto;
+            min-width: 2.5rem;
+            width: 2.5rem;
+            padding-left: 0;
+            padding-right: 0;
+            color: #dc2626;
+            border-color: #fecaca;
+            background: #fef2f2;
+        }
+        .frame-actions .loc-btn:hover,
+        .frame-actions .loc-btn:active {
+            color: #b91c1c;
+            background: #fee2e2;
+            border-color: #fca5a5;
+        }
+        .frame-actions .loc-btn svg { display: block; }
         .frame-actions .pick-btn:hover { background: #bfdbfe; color: var(--accent-btn-text); }
         .sheet-panel #pick-submit {
             background: var(--accent-btn);
@@ -397,6 +458,19 @@
                         if (ok) return;
                     }
                     await openFallbackTryOn(name, image);
+                });
+            });
+
+            document.querySelectorAll('.loc-btn').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var url = (btn.getAttribute('data-maps-url') || '').trim();
+                    if (!url) {
+                        alert('Shop location is not set for this frame yet.');
+                        return;
+                    }
+                    window.open(url, '_blank', 'noopener,noreferrer');
                 });
             });
         })();

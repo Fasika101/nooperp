@@ -103,8 +103,45 @@ class ShopCatalogService
             ->with([
                 'variants.colorOption:id,name',
                 'variants.sizeOption:id,name',
-                'variants.branchStocks',
+                'variants.branchStocks.branch:id,name,address,google_maps_url,is_active',
                 'brand:id,name',
+                'gender:id,name',
+            ])
+            ->orderBy('name')
+            ->get();
+
+        return $products
+            ->map(fn (Product $product) => $this->serializeFrame($product))
+            ->filter(fn (array $row) => $row['stock'] > 0)
+            ->values();
+    }
+
+    /**
+     * Search in-stock frames by name or brand (all genders).
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function searchFrames(string $query): Collection
+    {
+        $q = trim($query);
+        if ($q === '') {
+            return collect();
+        }
+
+        $like = '%'.$q.'%';
+
+        $products = Product::query()
+            ->where('is_service', false)
+            ->where(function ($builder) use ($like) {
+                $builder->where('name', 'like', $like)
+                    ->orWhereHas('brand', fn ($b) => $b->where('name', 'like', $like));
+            })
+            ->with([
+                'variants.colorOption:id,name',
+                'variants.sizeOption:id,name',
+                'variants.branchStocks.branch:id,name,address,google_maps_url,is_active',
+                'brand:id,name',
+                'gender:id,name',
             ])
             ->orderBy('name')
             ->get();
@@ -123,7 +160,7 @@ class ShopCatalogService
                 'gender:id,name',
                 'variants.colorOption:id,name',
                 'variants.sizeOption:id,name',
-                'variants.branchStocks',
+                'variants.branchStocks.branch:id,name,address,google_maps_url,is_active',
                 'brand:id,name',
             ])
             ->find($productId);
@@ -197,7 +234,63 @@ class ShopCatalogService
             'variants' => $inStock->all(),
             // Banuba TINT SKU — must match the SKU registered in Banuba's catalog
             'try_on_sku' => (string) $product->id,
+            'location' => $this->locationForProduct($product),
         ];
+    }
+
+    /**
+     * Branch with stock + Google Maps share link for this product.
+     * Prefers the storefront branch, then the branch with the most stock.
+     *
+     * @return array{branch_id:int,name:string,address:?string,maps_url:string}|null
+     */
+    protected function locationForProduct(Product $product): ?array
+    {
+        $preferred = $this->branchId();
+        $byBranch = [];
+
+        foreach ($product->variants as $variant) {
+            foreach ($variant->branchStocks as $stock) {
+                if ((int) $stock->quantity < 1) {
+                    continue;
+                }
+
+                $branch = $stock->branch;
+                if (! $branch || ! $branch->is_active || ! $branch->hasGoogleMapsUrl()) {
+                    continue;
+                }
+
+                $id = (int) $branch->id;
+                if (! isset($byBranch[$id])) {
+                    $byBranch[$id] = [
+                        'branch_id' => $id,
+                        'name' => (string) $branch->name,
+                        'address' => $branch->address,
+                        'maps_url' => trim((string) $branch->google_maps_url),
+                        'quantity' => 0,
+                        'preferred' => $id === $preferred,
+                    ];
+                }
+                $byBranch[$id]['quantity'] += (int) $stock->quantity;
+            }
+        }
+
+        if ($byBranch === []) {
+            return null;
+        }
+
+        usort($byBranch, function (array $a, array $b): int {
+            if ($a['preferred'] !== $b['preferred']) {
+                return $a['preferred'] ? -1 : 1;
+            }
+
+            return $b['quantity'] <=> $a['quantity'];
+        });
+
+        $best = $byBranch[0];
+        unset($best['quantity'], $best['preferred']);
+
+        return $best;
     }
 
     /**

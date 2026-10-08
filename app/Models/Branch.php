@@ -13,6 +13,7 @@ class Branch extends Model
         'code',
         'phone',
         'address',
+        'google_maps_url',
         'is_active',
         'is_default',
     ];
@@ -23,6 +24,13 @@ class Branch extends Model
             'is_active' => 'boolean',
             'is_default' => 'boolean',
         ];
+    }
+
+    public function hasGoogleMapsUrl(): bool
+    {
+        $url = trim((string) ($this->google_maps_url ?? ''));
+
+        return $url !== '' && filter_var($url, FILTER_VALIDATE_URL) !== false;
     }
 
     public static function getDefaultBranch(): ?self

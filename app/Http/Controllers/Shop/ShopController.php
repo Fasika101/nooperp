@@ -24,6 +24,7 @@ class ShopController extends Controller
             'brand' => config('storefront.brand_name'),
             'cartCount' => 0,
             'shopStep' => 1,
+            'showShopSearch' => true,
         ]);
     }
 
@@ -82,16 +83,58 @@ class ShopController extends Controller
             'backLabel' => 'Back',
             'shopStep' => 2,
             'hasDock' => ShopCart::totals()['item_count'] > 0,
+            'showShopSearch' => true,
+        ]);
+    }
+
+    public function search(Request $request): View|RedirectResponse
+    {
+        $q = trim((string) $request->query('q', ''));
+        if ($q === '') {
+            return redirect()->route('shop.gender');
+        }
+
+        $perPage = 10;
+        $page = max(1, (int) $request->query('page', 1));
+        $allFrames = $this->catalog->searchFrames($q);
+        $total = $allFrames->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        if ($page > $lastPage) {
+            $page = $lastPage;
+        }
+        $frames = $allFrames->slice(($page - 1) * $perPage, $perPage)->values();
+        $merchantId = (string) config('storefront.banuba.tint_merchant_id', '');
+        $cart = ShopCart::get();
+        $gender = ! empty($cart['gender_id'])
+            ? $this->catalog->gender((int) $cart['gender_id'])
+            : null;
+
+        return view('shop.frames', [
+            'gender' => $gender,
+            'frames' => $frames,
+            'page' => $page,
+            'lastPage' => $lastPage,
+            'totalFrames' => $total,
+            'perPage' => $perPage,
+            'brand' => config('storefront.brand_name'),
+            'currency' => config('storefront.currency', 'ETB'),
+            'cartCount' => ShopCart::totals()['item_count'],
+            'banubaReady' => $merchantId !== '',
+            'banubaMerchantId' => $merchantId,
+            'banubaWidgetUrl' => (string) config('storefront.banuba.widget_url'),
+            'stickyNav' => true,
+            'backUrl' => ! empty($cart['gender_id']) ? route('shop.frames') : route('shop.gender'),
+            'backLabel' => 'Back',
+            'shopStep' => 2,
+            'hasDock' => ShopCart::totals()['item_count'] > 0,
+            'showShopSearch' => true,
+            'isSearch' => true,
+            'searchQuery' => $q,
         ]);
     }
 
     public function addToCart(Request $request): RedirectResponse
     {
-        $cart = ShopCart::get();
-        if (empty($cart['gender_id'])) {
-            return redirect()->route('shop.gender');
-        }
-
         $data = $request->validate([
             'product_id' => ['required', 'integer'],
             'color_option_id' => ['nullable', 'integer'],
@@ -99,8 +142,15 @@ class ShopController extends Controller
         ]);
 
         $frame = $this->catalog->frame((int) $data['product_id']);
-        if (! $frame || (int) $frame['gender_option_id'] !== (int) $cart['gender_id']) {
+        if (! $frame || (int) ($frame['stock'] ?? 0) < 1) {
             return back()->with('error', 'Frame not available.');
+        }
+
+        // Search can add before gender pick — align cart gender to the product.
+        $cart = ShopCart::get();
+        if ((int) ($cart['gender_id'] ?? 0) !== (int) $frame['gender_option_id']) {
+            $cart['gender_id'] = (int) $frame['gender_option_id'];
+            ShopCart::put($cart);
         }
 
         $colorId = isset($data['color_option_id']) ? (int) $data['color_option_id'] : null;

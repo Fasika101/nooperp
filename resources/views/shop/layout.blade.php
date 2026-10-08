@@ -277,6 +277,52 @@
             box-shadow: 0 6px 14px rgba(37, 99, 235, 0.28);
         }
         .shop-progress-step.is-current { color: #1d4ed8; }
+        .shop-search {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0 0 1rem;
+            padding: 0.35rem 0.4rem 0.35rem 0.85rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            box-shadow: 0 4px 14px rgba(29, 78, 216, 0.06);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .shop-search:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+        .shop-search-input {
+            flex: 1;
+            min-width: 0;
+            border: 0;
+            background: transparent;
+            padding: 0.55rem 0;
+            color: var(--ink);
+            outline: none;
+            font-size: 0.9375rem;
+            -webkit-user-select: text;
+            user-select: text;
+        }
+        .shop-search-input::placeholder { color: #94a3b8; }
+        .shop-search-btn {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.5rem;
+            height: 2.5rem;
+            border: 0;
+            border-radius: 999px;
+            background: var(--accent-btn);
+            color: var(--accent-btn-text);
+            border: 1px solid var(--accent-border);
+            cursor: pointer;
+            transition: transform 0.12s ease, background 0.12s ease;
+        }
+        .shop-search-btn:active { transform: scale(0.95); background: #bfdbfe; }
+        .shop-search-btn svg { display: block; }
         @media (min-width: 481px) {
             body { background: #e8eefc; }
             .shop-shell {
@@ -311,6 +357,27 @@
         </header>
 
         @include('shop.partials.progress')
+
+        @if(!empty($showShopSearch))
+            <form class="shop-search anim-in" action="{{ route('shop.search') }}" method="get" role="search">
+                <input
+                    class="shop-search-input"
+                    type="search"
+                    name="q"
+                    value="{{ $searchQuery ?? '' }}"
+                    placeholder="Search frames or brands…"
+                    enterkeyhint="search"
+                    autocomplete="off"
+                    aria-label="Search frames or brands"
+                >
+                <button type="submit" class="shop-search-btn" aria-label="Search">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7"/>
+                        <path d="M20 20l-3.5-3.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </form>
+        @endif
 
         @if(session('success'))
             <div class="flash flash-ok">{{ is_array(session('success')) ? implode(' ', \Illuminate\Support\Arr::flatten(session('success'))) : session('success') }}</div>

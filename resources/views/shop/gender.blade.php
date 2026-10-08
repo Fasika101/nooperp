@@ -5,7 +5,7 @@
 @section('content')
     <div class="gender-stage anim-in">
         <h1 class="page-title">Who are we shopping for?</h1>
-        <p class="page-sub">Tap a category to see matching frames in stock.</p>
+        <p class="page-sub">Search above for a specific frame, or tap a category to browse.</p>
 
         <div class="gender-grid">
             @forelse($genders as $i => $gender)
