@@ -4,7 +4,7 @@
 
 @section('content')
     <h1 class="page-title anim-in">Your cart</h1>
-    <p class="page-sub anim-in">Scan your prescription — HMC or Bluecut is detected from the Rx, then continue to delivery details.</p>
+    <p class="page-sub anim-in">Scan your prescription.</p>
 
     <div class="card cart-items anim-in">
         @foreach($cart['items'] as $i => $item)
