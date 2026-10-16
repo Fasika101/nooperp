@@ -62,13 +62,22 @@ return [
     ],
 
     /*
-    | Banuba TINT virtual try-on (glasses).
-    | Get merchant ID via https://www.banuba.com form or info@banuba.com
-    | Free trial / Shopify free plan — custom storefront uses merchant-id from Banuba.
+    | DeepAR virtual try-on (glasses).
+    | License key from https://developer.deepar.ai — register your web domain(s).
+    | Per-product .deepar effect files are uploaded on the Product in ERP.
+    | SDK docs: https://docs.deepar.ai/deepar-sdk/platforms/web/getting-started/
+    */
+    'deepar' => [
+        'license_key' => env('DEEPAR_LICENSE_KEY'),
+        'sdk_url' => env('DEEPAR_SDK_URL', 'https://cdn.jsdelivr.net/npm/deepar/js/deepar.js'),
+    ],
+
+    /*
+    | Banuba TINT (legacy — shop try-on uses DeepAR).
     */
     'banuba' => [
         'tint_merchant_id' => env('BANUBA_TINT_MERCHANT_ID'),
-        'client_token' => env('BANUBA_CLIENT_TOKEN'), // optional / legacy; merchant-id preferred
+        'client_token' => env('BANUBA_CLIENT_TOKEN'),
         'widget_url' => env('BANUBA_TINT_WIDGET_URL', 'https://tintvto.com/widget.js'),
     ],
 ];

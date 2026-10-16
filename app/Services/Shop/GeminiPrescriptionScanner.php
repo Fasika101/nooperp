@@ -9,6 +9,12 @@ use RuntimeException;
 
 class GeminiPrescriptionScanner
 {
+    public function __construct(
+        protected ?ShopLensMatrixPricer $matrixPricer = null,
+    ) {
+        $this->matrixPricer ??= new ShopLensMatrixPricer;
+    }
+
     public function isConfigured(): bool
     {
         return filled(config('storefront.gemini.api_key'));
@@ -86,19 +92,19 @@ class GeminiPrescriptionScanner
     }
 
     /**
-     * Price lenses from ERP Optical Rx config using scanned values.
+     * Price lenses from the shop matrix (HMC/Bluecut bands). Does not use ERP POS pricing.
      *
      * @deprecated Prefer quoteFromScan() for exact / range / quote modes.
      */
-    public function priceFromScan(array $scan): float
+    public function priceFromScan(array $scan, ?string $coating = null): float
     {
-        $quote = $this->quoteFromScan($scan);
+        $quote = $this->quoteFromScan($scan, $coating);
 
         return (float) ($quote['price'] ?? 0);
     }
 
     /**
-     * Build an ERP-based lens price quote from a scan.
+     * Build a shop-matrix lens price quote from a scan.
      *
      * @return array{
      *   mode: 'exact'|'range'|'quote',
@@ -107,146 +113,20 @@ class GeminiPrescriptionScanner
      *   price_max: ?float,
      *   label: string,
      *   note: string,
-     *   vision: string
+     *   vision: string,
+     *   vision_label: string,
+     *   coating: string,
+     *   coating_label: string,
+     *   lens_type: ?string,
+     *   od_type: ?string,
+     *   os_type: ?string,
+     *   available: bool,
+     *   pricing_source: string
      * }
      */
-    public function quoteFromScan(array $scan): array
+    public function quoteFromScan(array $scan, ?string $coating = null): array
     {
-        $confidence = (string) ($scan['confidence'] ?? 'medium');
-        $visionRaw = (string) ($scan['vision_type_raw'] ?? $scan['vision_type'] ?? 'single');
-        $vision = ($scan['vision_type'] ?? 'single') === 'progressive' ? 'progressive' : 'single';
-
-        $odSph = $scan['right_eye']['sph'] ?? null;
-        $odCyl = $scan['right_eye']['cyl'] ?? null;
-        $odAdd = $scan['right_eye']['add'] ?? null;
-        $osSph = $scan['left_eye']['sph'] ?? null;
-        $osCyl = $scan['left_eye']['cyl'] ?? null;
-        $osAdd = $scan['left_eye']['add'] ?? null;
-
-        $primary = OpticalRxConfig::prescriptionAddOn($vision, $odSph, $odCyl, $osSph, $osCyl, $odAdd, $osAdd);
-
-        // Beyond ERP tiers — POS would enter a custom price
-        if ($primary === OpticalRxConfig::COMPOUND_CUSTOM_SENTINEL) {
-            $tier1 = OpticalRxConfig::getCompoundSvTier1Price();
-            $tier2 = OpticalRxConfig::getCompoundSvTier2Price();
-
-            return [
-                'mode' => 'quote',
-                'price' => 0.0,
-                'price_min' => $tier2 > 0 ? $tier2 : ($tier1 > 0 ? $tier1 : null),
-                'price_max' => null,
-                'label' => 'Quote after review',
-                'note' => 'This prescription needs a lab review. Frame + coating can be paid now; final lens price is confirmed later.',
-                'vision' => $vision,
-            ];
-        }
-
-        $candidates = [];
-        if ($primary > 0) {
-            $candidates[] = $primary;
-        }
-
-        // If Gemini was unsure about single vs progressive, price both
-        if ($visionRaw === 'unknown' || $confidence !== 'high') {
-            $altVision = $vision === 'progressive' ? 'single' : 'progressive';
-            $alt = OpticalRxConfig::prescriptionAddOn($altVision, $odSph, $odCyl, $osSph, $osCyl, $odAdd, $osAdd);
-            if ($alt !== OpticalRxConfig::COMPOUND_CUSTOM_SENTINEL && $alt > 0) {
-                $candidates[] = $alt;
-            }
-        }
-
-        // Single-vision compound: nearby tier as a soft range when confidence isn't high
-        if ($vision === 'single' && $confidence !== 'high') {
-            $hasSph = filled($odSph) || filled($osSph);
-            $hasCyl = filled($odCyl) || filled($osCyl);
-            if ($hasSph && $hasCyl) {
-                $t1 = OpticalRxConfig::getCompoundSvTier1Price();
-                $t2 = OpticalRxConfig::getCompoundSvTier2Price();
-                if ($t1 > 0) {
-                    $candidates[] = $t1;
-                }
-                if ($t2 > 0) {
-                    $candidates[] = $t2;
-                }
-            }
-        }
-
-        // Progressive: when ADD is present, include both ADD tiers as a soft range
-        if ($vision === 'progressive' && $confidence !== 'high') {
-            $hasAdd = filled($odAdd) || filled($osAdd);
-            if ($hasAdd) {
-                $a1 = OpticalRxConfig::getProgressiveAddTier1Price();
-                $a2 = OpticalRxConfig::getProgressiveAddTier2Price();
-                if ($a1 > 0) {
-                    $candidates[] = $a1;
-                }
-                if ($a2 > 0) {
-                    $candidates[] = $a2;
-                }
-                // If primary already stacked (−SPH/CYL + ADD), shift by the other ADD tier delta
-                if ($primary > 0 && $a1 > 0 && $a2 > 0) {
-                    $candidates[] = max(0, $primary + ($a2 - $a1));
-                    $candidates[] = max(0, $primary - ($a2 - $a1));
-                }
-            }
-        }
-
-        $candidates = array_values(array_unique(array_map(fn ($v) => round((float) $v, 2), $candidates)));
-        sort($candidates);
-
-        if ($candidates === []) {
-            return [
-                'mode' => 'quote',
-                'price' => 0.0,
-                'price_min' => null,
-                'price_max' => null,
-                'label' => 'Quote after review',
-                'note' => 'We could not match this prescription to standard lens prices. Pay for the frame now — lens price confirmed after review.',
-                'vision' => $vision,
-            ];
-        }
-
-        $min = $candidates[0];
-        $max = $candidates[array_key_last($candidates)];
-        $charge = $primary > 0 ? round($primary, 2) : round(($min + $max) / 2, 2);
-
-        // Exact when high confidence and a single clear ERP price
-        if ($confidence === 'high' && abs($max - $min) < 0.01 && $primary > 0) {
-            return [
-                'mode' => 'exact',
-                'price' => round($primary, 2),
-                'price_min' => round($primary, 2),
-                'price_max' => round($primary, 2),
-                'label' => 'Lens price',
-                'note' => 'Priced from your scanned prescription.',
-                'vision' => $vision,
-            ];
-        }
-
-        // Still treat as exact if min==max even with medium confidence
-        if (abs($max - $min) < 0.01) {
-            return [
-                'mode' => 'exact',
-                'price' => $min,
-                'price_min' => $min,
-                'price_max' => $max,
-                'label' => 'Lens price',
-                'note' => 'Priced from your scanned prescription.',
-                'vision' => $vision,
-            ];
-        }
-
-        return [
-            'mode' => 'range',
-            'price' => $charge,
-            'price_min' => $min,
-            'price_max' => $max,
-            'label' => 'Estimated lens range',
-            'note' => $confidence === 'low'
-                ? 'Image was hard to read — final lens price may be adjusted after review.'
-                : 'Estimated from your scanned prescription. Final price confirmed if values need a lab check.',
-            'vision' => $vision,
-        ];
+        return $this->matrixPricer->quote($scan, $coating);
     }
 
     protected function prompt(): string
@@ -266,11 +146,22 @@ Rules:
 - vision_type: "progressive" if there is an ADD / NEAR / bifocal / progressive
   indication, "single" if it is clearly distance-only or reading-only single
   vision, otherwise "unknown".
+- coating_hint: return "bluecut" if any Bluecut synonym appears (blue cut, bluecut,
+  blue-cut, blue light, blue-light, bluelight, blue light filter, blue block,
+  blue blocker, blueblock, anti-blue, anti blue, blue guard, blueguard, blue
+  protect, blue ray cut, BC, BL). Return "hmc" if any HMC synonym appears (HMC,
+  HC, SHMC, MC, multi-coat, multicoating, hard coating, hard multi coating, AG,
+  AR, ARC, antiglare, anti-glare, glare free, anti-reflective, UC, uncoated, no
+  coating, UV420, white, clear, plain, normal, standard, photochromic,
+  photosolar, photo solar, sunsensor, sun sensor, auto grey, changeable, colour
+  change). If BOTH Bluecut and HMC synonyms appear, prefer "bluecut". If none, null.
+- separate_frames: true only if a comment says the customer wants separate
+  frames / two pairs for distance vs near; otherwise false.
 - Use null for any value that is not present or not readable. NEVER guess.
 - confidence: "high" if everything was clearly readable, "medium" if some values
   were hard to read, "low" if the image is blurry or barely readable.
 - notes: one short sentence about anything the customer should double check
-  (empty string if nothing).
+  (empty string if nothing). Include coating words verbatim when present.
 PROMPT;
     }
 
@@ -306,9 +197,11 @@ PROMPT;
                     ],
                 ],
                 'confidence' => ['type' => 'STRING', 'enum' => ['high', 'medium', 'low']],
+                'coating_hint' => ['type' => 'STRING', 'nullable' => true, 'enum' => ['hmc', 'bluecut']],
+                'separate_frames' => ['type' => 'BOOLEAN'],
                 'notes' => ['type' => 'STRING'],
             ],
-            'required' => ['is_prescription', 'vision_type', 'right_eye', 'left_eye', 'pd', 'confidence'],
+            'required' => ['is_prescription', 'vision_type', 'right_eye', 'left_eye', 'pd', 'confidence', 'separate_frames'],
         ];
     }
 
@@ -320,8 +213,13 @@ PROMPT;
     {
         $visionRaw = (string) ($data['vision_type'] ?? 'unknown');
         $vision = in_array($visionRaw, ['single', 'progressive'], true) ? $visionRaw : 'single';
+        // Always resolve from Rule 9/10 text (Gemini hint + notes). Scan-only — no customer choice.
+        $coatingHint = $this->matrixPricer->detectCoatingFromText(
+            (string) ($data['coating_hint'] ?? ''),
+            (string) ($data['notes'] ?? ''),
+        );
 
-        return [
+        $normalized = [
             'is_prescription' => (bool) ($data['is_prescription'] ?? true),
             'vision_type' => $vision,
             'vision_type_raw' => in_array($visionRaw, ['single', 'progressive', 'unknown'], true) ? $visionRaw : 'unknown',
@@ -346,8 +244,15 @@ PROMPT;
             'confidence' => in_array($data['confidence'] ?? '', ['high', 'medium', 'low'], true)
                 ? $data['confidence']
                 : 'medium',
+            'coating_hint' => $coatingHint,
+            'separate_frames' => (bool) ($data['separate_frames'] ?? false),
             'notes' => (string) ($data['notes'] ?? ''),
         ];
+
+        // Apply ADD → progressive (unless separate frames) for consistent cart/order labels
+        $normalized['vision_type'] = $this->matrixPricer->resolveVision($normalized);
+
+        return $normalized;
     }
 
     protected function normalizePower(mixed $raw): ?string

@@ -125,20 +125,39 @@ class ShopOrderService
 
             // Prescription + lens coating as service lines
             $serviceId = Product::opticalServiceProductId();
+            $hasScannedRx = ! empty($cart['prescription']['scanned']);
+            $visionType = (string) ($cart['prescription']['vision_type']
+                ?? $cart['prescription']['scan']['vision_type']
+                ?? 'single');
+            $visionLabel = (string) ($cart['prescription']['vision_label']
+                ?? ($visionType === 'progressive' ? 'Progressive vision' : 'Single vision'));
+            $rxCoating = (string) ($cart['prescription']['coating']
+                ?? $cart['rx_coating']
+                ?? 'hmc');
+            $rxCoatingLabel = (string) ($cart['prescription']['coating_label']
+                ?? ($rxCoating === 'bluecut' ? 'Bluecut' : 'HMC'));
+
             $opticalMeta = [
                 'route' => 'shop',
                 'source' => 'in_app_shop',
+                'pricing_source' => $cart['prescription']['pricing_source'] ?? 'shop_lens_matrix',
                 'prescription' => $cart['prescription']['scan'] ?? ($cart['prescription'] ?? null),
-                'lens_coating_id' => $cart['lens_coating_id'] ?? null,
-                'vision_type' => $cart['prescription']['vision_type'] ?? null,
+                'vision_type' => $visionType,
+                'vision_label' => $visionLabel,
+                'coating' => $hasScannedRx ? $rxCoating : null,
+                'coating_label' => $hasScannedRx ? $rxCoatingLabel : null,
+                'lens_type' => $cart['prescription']['lens_type'] ?? null,
+                'od_type' => $cart['prescription']['od_type'] ?? null,
+                'os_type' => $cart['prescription']['os_type'] ?? null,
+                'lens_coating_id' => $hasScannedRx ? null : ($cart['lens_coating_id'] ?? null),
             ];
 
-            if ($totals['prescription'] > 0 && $serviceId) {
+            if ($hasScannedRx && $serviceId) {
                 $prepared[] = [
                     'product_id' => $serviceId,
                     'size_option_id' => null,
                     'color_option_id' => null,
-                    'line_label' => 'Prescription lenses',
+                    'line_label' => 'Prescription lenses ('.$visionLabel.', '.$rxCoatingLabel.')',
                     'quantity' => 1,
                     'price' => $totals['prescription'],
                     'unit_cost' => 0,
@@ -146,7 +165,8 @@ class ShopOrderService
                 ];
             }
 
-            if ($totals['lens'] > 0 && $serviceId) {
+            // Non-Prescription add-ons only when there is no scanned Rx (matrix price includes coating)
+            if (! $hasScannedRx && $totals['lens'] > 0 && $serviceId) {
                 $lensLabel = 'Non-Prescription';
                 if (! empty($cart['lens_coating_id'])) {
                     $lensRow = \App\Models\OpticalLensNoPrescription::query()->find($cart['lens_coating_id']);
@@ -210,10 +230,29 @@ class ShopOrderService
 
             $batchToken = $cart['rx_batch_token'] ?? null;
             if (is_string($batchToken) && $batchToken !== '') {
-                ShopPrescription::query()
+                $rxRows = ShopPrescription::query()
                     ->where('batch_token', $batchToken)
                     ->whereNull('order_id')
-                    ->update(['order_id' => $order->id]);
+                    ->get();
+                foreach ($rxRows as $rx) {
+                    $scanJson = is_array($rx->scan_json) ? $rx->scan_json : [];
+                    if ($hasScannedRx) {
+                        $scanJson['coating'] = $rxCoating;
+                        $scanJson['coating_label'] = $rxCoatingLabel;
+                        $scanJson['vision_type'] = $visionType;
+                        $scanJson['vision_label'] = $visionLabel;
+                        $scanJson['lens_type'] = $cart['prescription']['lens_type'] ?? ($scanJson['lens_type'] ?? null);
+                        if (! empty($cart['prescription']['scan']['pricing'])) {
+                            $scanJson['pricing'] = $cart['prescription']['scan']['pricing'];
+                        }
+                    }
+                    $rx->forceFill([
+                        'order_id' => $order->id,
+                        'vision_type' => $visionType,
+                        'scan_json' => $scanJson,
+                        'prescription_price' => $totals['prescription'],
+                    ])->save();
+                }
             }
 
             return $order->fresh(['orderItems', 'shopPrescriptions']);
@@ -243,7 +282,7 @@ class ShopOrderService
         }
 
         $lens = 0.0;
-        if (! empty($cart['lens_coating_id'])) {
+        if (empty($cart['prescription']['scanned']) && ! empty($cart['lens_coating_id'])) {
             $price = OpticalLensNoPrescription::query()
                 ->where('is_active', true)
                 ->whereKey((int) $cart['lens_coating_id'])

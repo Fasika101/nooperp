@@ -232,8 +232,8 @@ class ShopCatalogService
             'stock' => $stock,
             'colors' => $colorList,
             'variants' => $inStock->all(),
-            // Banuba TINT SKU — must match the SKU registered in Banuba's catalog
-            'try_on_sku' => (string) $product->id,
+            // DeepAR effect URL from ERP product upload (null when not set)
+            'try_on_effect_url' => $this->imageUrl($product->deepar_effect),
             'location' => $this->locationForProduct($product),
         ];
     }
@@ -393,6 +393,7 @@ class ShopCatalogService
             return null;
         }
 
-        return Storage::disk('public')->url($image);
+        // Absolute URL so DeepAR / <img> work regardless of current path
+        return url(Storage::disk('public')->url($image));
     }
 }

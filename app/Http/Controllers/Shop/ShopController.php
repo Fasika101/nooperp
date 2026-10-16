@@ -63,7 +63,7 @@ class ShopController extends Controller
             $page = $lastPage;
         }
         $frames = $allFrames->slice(($page - 1) * $perPage, $perPage)->values();
-        $merchantId = (string) config('storefront.banuba.tint_merchant_id', '');
+        $deeparKey = (string) config('storefront.deepar.license_key', '');
 
         return view('shop.frames', [
             'gender' => $gender,
@@ -75,9 +75,9 @@ class ShopController extends Controller
             'brand' => config('storefront.brand_name'),
             'currency' => config('storefront.currency', 'ETB'),
             'cartCount' => ShopCart::totals()['item_count'],
-            'banubaReady' => $merchantId !== '',
-            'banubaMerchantId' => $merchantId,
-            'banubaWidgetUrl' => (string) config('storefront.banuba.widget_url'),
+            'deeparReady' => $deeparKey !== '',
+            'deeparLicenseKey' => $deeparKey,
+            'deeparSdkUrl' => (string) config('storefront.deepar.sdk_url'),
             'stickyNav' => true,
             'backUrl' => route('shop.gender'),
             'backLabel' => 'Back',
@@ -103,7 +103,7 @@ class ShopController extends Controller
             $page = $lastPage;
         }
         $frames = $allFrames->slice(($page - 1) * $perPage, $perPage)->values();
-        $merchantId = (string) config('storefront.banuba.tint_merchant_id', '');
+        $deeparKey = (string) config('storefront.deepar.license_key', '');
         $cart = ShopCart::get();
         $gender = ! empty($cart['gender_id'])
             ? $this->catalog->gender((int) $cart['gender_id'])
@@ -119,9 +119,9 @@ class ShopController extends Controller
             'brand' => config('storefront.brand_name'),
             'currency' => config('storefront.currency', 'ETB'),
             'cartCount' => ShopCart::totals()['item_count'],
-            'banubaReady' => $merchantId !== '',
-            'banubaMerchantId' => $merchantId,
-            'banubaWidgetUrl' => (string) config('storefront.banuba.widget_url'),
+            'deeparReady' => $deeparKey !== '',
+            'deeparLicenseKey' => $deeparKey,
+            'deeparSdkUrl' => (string) config('storefront.deepar.sdk_url'),
             'stickyNav' => true,
             'backUrl' => ! empty($cart['gender_id']) ? route('shop.frames') : route('shop.gender'),
             'backLabel' => 'Back',

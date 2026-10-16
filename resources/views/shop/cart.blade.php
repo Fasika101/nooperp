@@ -4,7 +4,7 @@
 
 @section('content')
     <h1 class="page-title anim-in">Your cart</h1>
-    <p class="page-sub anim-in">Scan prescription, pick a lens coating, then continue to delivery details.</p>
+    <p class="page-sub anim-in">Scan your prescription — HMC or Bluecut is detected from the Rx, then continue to delivery details.</p>
 
     <div class="card cart-items anim-in">
         @foreach($cart['items'] as $i => $item)
@@ -51,7 +51,11 @@
                     $visionType = ($scan['vision_type'] ?? $cart['prescription']['vision_type'] ?? 'single') === 'progressive'
                         ? 'progressive'
                         : 'single';
-                    $visionLabel = $visionType === 'progressive' ? 'Progressive prescription' : 'Single prescription';
+                    $visionLabel = $cart['prescription']['vision_label']
+                        ?? ($visionType === 'progressive' ? 'Progressive vision' : 'Single vision');
+                    $rxCoating = $cart['prescription']['coating'] ?? $cart['rx_coating'] ?? 'hmc';
+                    $rxCoatingLabel = $cart['prescription']['coating_label']
+                        ?? ($rxCoating === 'bluecut' ? 'Bluecut' : 'HMC');
                     $chargePrice = (float) ($cart['prescription']['price'] ?? $prescriptionPrice);
                     if ($priceMode === 'range' && $priceMin !== null && $priceMax !== null && (float) $priceMax > (float) $priceMin) {
                         $priceDisplay = $currency.' '.number_format((float) $priceMin, 2).' – '.number_format((float) $priceMax, 2);
@@ -63,7 +67,7 @@
                 @endphp
                 <div class="rx-ok">
                     <div class="rx-ok-main">
-                        <span>{{ $visionLabel }}</span>
+                        <span>{{ $visionLabel }} · {{ $rxCoatingLabel }}</span>
                         <small>
                             {{ $priceLabel }}: {{ $priceDisplay }}
                             @if(!empty($scan['confidence']))
@@ -79,11 +83,16 @@
                 @if($priceMode === 'range' && $chargePrice > 0)
                     <p class="rx-price-note">Charged estimate in total: {{ $currency }} {{ number_format($chargePrice, 2) }} (within the range above).</p>
                 @endif
+
                 @if(!empty($scan['right_eye']) || !empty($scan['left_eye']))
                     <div class="rx-values card">
                         <div class="rx-type-row">
-                            <strong>Type</strong>
+                            <strong>Vision</strong>
                             <span class="rx-type-badge {{ $visionType === 'progressive' ? 'is-progressive' : 'is-single' }}">{{ $visionLabel }}</span>
+                        </div>
+                        <div class="rx-type-row">
+                            <strong>Coating</strong>
+                            <span class="rx-type-badge {{ $rxCoating === 'bluecut' ? 'is-progressive' : 'is-single' }}">{{ $rxCoatingLabel }} (from scan)</span>
                         </div>
                         <div class="rx-eye">
                             <strong>OD (Right)</strong>
@@ -127,9 +136,10 @@
             @endif
         </section>
 
+        @if(empty($cart['prescription']['scanned']))
         <section class="block">
             <h2 class="block-title">Non-Prescription</h2>
-            <p class="block-sub"></p>
+            <p class="block-sub">Optional if you are not uploading a prescription.</p>
             <div class="addon-list" id="lens-list">
                 <label class="addon">
                     <input type="radio" name="lens_coating_id" value=""
@@ -153,6 +163,7 @@
                 @endforeach
             </div>
         </section>
+        @endif
 
         <section class="totals card" id="totals"
             data-subtotal="{{ $totals['subtotal'] }}"
@@ -161,12 +172,16 @@
             <div class="tot-row"><span>Frame</span><span id="tot-sub">{{ $currency }} {{ number_format($totals['subtotal'], 2) }}</span></div>
             <div class="tot-row" id="row-rx" @if(empty($cart['prescription']['scanned'])) style="display:none" @endif>
                 <span id="rx-tot-label">
+                    @php
+                        $totVision = $cart['prescription']['vision_label'] ?? 'Prescription';
+                        $totCoat = $cart['prescription']['coating_label'] ?? null;
+                    @endphp
                     @if(($cart['prescription']['price_mode'] ?? '') === 'range')
-                        Prescription (est.)
+                        {{ $totVision }}{{ $totCoat ? ' · '.$totCoat : '' }} (est.)
                     @elseif(($cart['prescription']['price_mode'] ?? '') === 'quote')
-                        Prescription (lab quote)
+                        {{ $totVision }}{{ $totCoat ? ' · '.$totCoat : '' }} (lab quote)
                     @else
-                        Prescription
+                        {{ $totVision }}{{ $totCoat ? ' · '.$totCoat : '' }}
                     @endif
                 </span>
                 <span id="tot-rx">

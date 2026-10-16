@@ -17,6 +17,7 @@ class ShopCart
      *   items: list<array<string,mixed>>,
      *   prescription:?array<string,mixed>,
      *   lens_coating_id:?int,
+     *   rx_coating:?string,
      *   rx_batch_token:?string,
      *   customer: array{name:string,phone:string,address:string}
      * }
@@ -30,6 +31,9 @@ class ShopCart
             'items' => array_values($cart['items'] ?? []),
             'prescription' => $cart['prescription'] ?? null,
             'lens_coating_id' => isset($cart['lens_coating_id']) ? (int) $cart['lens_coating_id'] : null,
+            'rx_coating' => isset($cart['rx_coating'])
+                ? (string) $cart['rx_coating']
+                : null,
             'rx_batch_token' => $cart['rx_batch_token'] ?? null,
             'customer' => [
                 'name' => $cart['customer']['name'] ?? '',
@@ -55,6 +59,7 @@ class ShopCart
         $cart['items'] = [];
         $cart['prescription'] = null;
         $cart['lens_coating_id'] = null;
+        $cart['rx_coating'] = null;
         $cart['rx_batch_token'] = null;
         self::put($cart);
     }
@@ -66,6 +71,7 @@ class ShopCart
         $cart['items'] = [];
         $cart['prescription'] = null;
         $cart['lens_coating_id'] = null;
+        $cart['rx_coating'] = null;
         $cart['rx_batch_token'] = null;
         self::put($cart);
     }
@@ -115,6 +121,10 @@ class ShopCart
             $charge = 0.0;
         }
 
+        $vision = (string) ($pricing['vision'] ?? $scan['vision_type'] ?? 'single');
+        $coating = (string) ($pricing['coating'] ?? $cart['rx_coating'] ?? ShopLensMatrixPricer::COATING_HMC);
+
+        $cart['rx_coating'] = $coating;
         $cart['prescription'] = [
             'path' => $path,
             'scanned' => $scanned,
@@ -126,9 +136,19 @@ class ShopCart
             'price_label' => (string) ($pricing['label'] ?? 'Lens price'),
             'price_note' => (string) ($pricing['note'] ?? ''),
             'prescription_id' => $prescriptionId,
-            'vision_type' => $scan['vision_type'] ?? null,
+            'vision_type' => $vision,
+            'vision_label' => (string) ($pricing['vision_label'] ?? ($vision === 'progressive' ? 'Progressive vision' : 'Single vision')),
+            'coating' => $coating,
+            'coating_label' => (string) ($pricing['coating_label'] ?? ($coating === ShopLensMatrixPricer::COATING_BLUECUT ? 'Bluecut' : 'HMC')),
+            'lens_type' => $pricing['lens_type'] ?? null,
+            'od_type' => $pricing['od_type'] ?? null,
+            'os_type' => $pricing['os_type'] ?? null,
+            'available' => (bool) ($pricing['available'] ?? true),
+            'pricing_source' => (string) ($pricing['pricing_source'] ?? 'shop_lens_matrix'),
             'confidence' => $scan['confidence'] ?? null,
         ];
+        // Matrix Rx price already includes coating — drop Non-Prescription add-on
+        $cart['lens_coating_id'] = null;
         self::put($cart);
     }
 
@@ -136,6 +156,7 @@ class ShopCart
     {
         $cart = self::get();
         $cart['prescription'] = null;
+        $cart['rx_coating'] = null;
         self::put($cart);
     }
 
@@ -143,6 +164,58 @@ class ShopCart
     {
         $cart = self::get();
         $cart['lens_coating_id'] = $lensId;
+        self::put($cart);
+    }
+
+    /**
+     * HMC / Bluecut for scanned Rx matrix pricing (not OpticalLensNoPrescription).
+     */
+    public static function setRxCoating(string $coating): void
+    {
+        $cart = self::get();
+        $cart['rx_coating'] = app(ShopLensMatrixPricer::class)->normalizeCoating($coating);
+        self::put($cart);
+    }
+
+    /**
+     * Re-apply matrix price to the current scanned prescription (e.g. after coating change).
+     *
+     * @param  array<string, mixed>  $pricing
+     */
+    public static function applyPrescriptionPricing(array $pricing): void
+    {
+        $cart = self::get();
+        if (empty($cart['prescription']['scanned'])) {
+            return;
+        }
+
+        $mode = (string) ($pricing['mode'] ?? 'exact');
+        $charge = $mode === 'quote' ? 0.0 : max(0.0, round((float) ($pricing['price'] ?? 0), 2));
+        $coating = (string) ($pricing['coating'] ?? $cart['rx_coating'] ?? ShopLensMatrixPricer::COATING_HMC);
+        $vision = (string) ($pricing['vision'] ?? $cart['prescription']['vision_type'] ?? 'single');
+
+        $cart['rx_coating'] = $coating;
+        $cart['lens_coating_id'] = null;
+        $cart['prescription']['price'] = $charge;
+        $cart['prescription']['price_min'] = isset($pricing['price_min']) ? (float) $pricing['price_min'] : null;
+        $cart['prescription']['price_max'] = isset($pricing['price_max']) ? (float) $pricing['price_max'] : null;
+        $cart['prescription']['price_mode'] = $mode;
+        $cart['prescription']['price_label'] = (string) ($pricing['label'] ?? 'Lens price');
+        $cart['prescription']['price_note'] = (string) ($pricing['note'] ?? '');
+        $cart['prescription']['vision_type'] = $vision;
+        $cart['prescription']['vision_label'] = (string) ($pricing['vision_label'] ?? ($vision === 'progressive' ? 'Progressive vision' : 'Single vision'));
+        $cart['prescription']['coating'] = $coating;
+        $cart['prescription']['coating_label'] = (string) ($pricing['coating_label'] ?? ($coating === ShopLensMatrixPricer::COATING_BLUECUT ? 'Bluecut' : 'HMC'));
+        $cart['prescription']['lens_type'] = $pricing['lens_type'] ?? null;
+        $cart['prescription']['od_type'] = $pricing['od_type'] ?? null;
+        $cart['prescription']['os_type'] = $pricing['os_type'] ?? null;
+        $cart['prescription']['available'] = (bool) ($pricing['available'] ?? true);
+        $cart['prescription']['pricing_source'] = (string) ($pricing['pricing_source'] ?? 'shop_lens_matrix');
+        if (is_array($cart['prescription']['scan'] ?? null)) {
+            $cart['prescription']['scan']['pricing'] = $pricing;
+            $cart['prescription']['scan']['coating'] = $coating;
+            $cart['prescription']['scan']['vision_type'] = $vision;
+        }
         self::put($cart);
     }
 
@@ -194,7 +267,10 @@ class ShopCart
             }
         }
 
-        $lens = self::lensPrice($cart['lens_coating_id'] ?? null);
+        // When Rx is scanned, matrix price already includes HMC/Bluecut — skip Non-Prescription add-on
+        $lens = ! empty($cart['prescription']['scanned'])
+            ? 0.0
+            : self::lensPrice($cart['lens_coating_id'] ?? null);
 
         return [
             'subtotal' => round($subtotal, 2),

@@ -62,7 +62,7 @@
                             <button type="button" class="btn btn-ghost btn-sm try-btn"
                                 data-name="{{ $frame['name'] }}"
                                 data-image="{{ $frame['image'] }}"
-                                data-sku="{{ $frame['try_on_sku'] }}">Try</button>
+                                data-effect="{{ $frame['try_on_effect_url'] ?? '' }}">Try</button>
                             @if(!empty($frame['location']['maps_url']))
                                 <button type="button" class="btn btn-ghost btn-sm loc-btn"
                                     data-maps-url="{{ $frame['location']['maps_url'] }}"
@@ -133,24 +133,19 @@
                 <strong id="try-title">Try on</strong>
                 <button type="button" class="btn btn-ghost btn-sm" id="try-close">Close</button>
             </div>
-            <div class="try-stage">
+            <div class="try-stage" id="try-stage">
+                <div id="deepar-preview" class="deepar-preview" hidden></div>
                 <video id="try-video" playsinline muted autoplay></video>
                 <img id="try-overlay" alt="" hidden>
                 <p id="try-fallback" class="page-sub" hidden>Camera not available. Showing frame preview.</p>
             </div>
-            <p id="try-banuba-hint" class="page-sub" style="margin:0.75rem 0 0;" hidden>
-                Banuba TINT is not configured yet. Add <code>BANUBA_TINT_MERCHANT_ID</code> to <code>.env</code>.
-            </p>
+            <p id="try-hint" class="page-sub" style="margin:0.75rem 0 0;" hidden></p>
         </div>
     </div>
 
-    @if($banubaReady ?? false)
-        <tint-vto
-            id="banuba-tint"
-            merchant-id="{{ $banubaMerchantId }}"
-            style="display:none"
-        ></tint-vto>
-        <script type="module" src="{{ $banubaWidgetUrl }}"></script>
+    @if($deeparReady ?? false)
+        {{-- Load without defer so window.deepar is ready when Try is tapped --}}
+        <script src="{{ $deeparSdkUrl }}"></script>
     @endif
 
     <style>
@@ -258,14 +253,16 @@
         .try-stage {
             position: relative; aspect-ratio: 3/4; background: #111; border-radius: 1rem; overflow: hidden;
         }
-        .try-stage video, .try-stage img {
+        .try-stage video, .try-stage img, .deepar-preview {
             position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
         }
+        .deepar-preview { z-index: 2; background: #111; }
+        .deepar-preview canvas { width: 100% !important; height: 100% !important; object-fit: cover; }
         #try-overlay {
             object-fit: contain; width: 70%; height: auto; left: 15%; top: 28%;
             bottom: auto; right: auto; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.35));
         }
-        #try-fallback { position:absolute; inset:auto 1rem 1rem; color:#fff; }
+        #try-fallback { position:absolute; inset:auto 1rem 1rem; color:#fff; z-index: 3; }
         #pick-form { margin-top: 1rem; }
     </style>
 
@@ -387,60 +384,145 @@
                 }
             });
 
-            // Try-on (Banuba TINT when configured, else simple camera overlay)
-            var banubaReady = @json($banubaReady ?? false);
+            // Try-on: DeepAR when license + product .deepar are set; else simple camera overlay
+            var deeparReady = @json($deeparReady ?? false);
+            var deeparLicenseKey = @json($deeparLicenseKey ?? '');
+            var deeparRootPath = 'https://cdn.jsdelivr.net/npm/deepar/';
             var modal = document.getElementById('try-modal');
             var video = document.getElementById('try-video');
             var overlay = document.getElementById('try-overlay');
             var fallback = document.getElementById('try-fallback');
+            var preview = document.getElementById('deepar-preview');
+            var hint = document.getElementById('try-hint');
             var stream = null;
-            var tint = document.getElementById('banuba-tint');
+            var deepARInstance = null;
 
-            function stopTry() {
-                if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-                video.srcObject = null;
-                modal.hidden = true;
-            }
-            document.getElementById('try-close').addEventListener('click', stopTry);
-            modal.addEventListener('click', function (e) { if (e.target === modal) stopTry(); });
-
-            async function openBanubaTryOn(sku, name, imageUrl) {
-                if (!tint || !sku) return false;
-                try {
-                    tint.setAttribute('sku', String(sku));
-                    tint.setAttribute('isolated-sku', '');
-                    if (typeof tint.open === 'function') {
-                        await tint.open();
-                    }
-                    if (typeof tint.useWebcam === 'function') {
-                        var webcamStream = await tint.useWebcam();
-                        if (!webcamStream && imageUrl && typeof tint.useImage === 'function') {
-                            try {
-                                var blob = await fetch(imageUrl).then(function (r) { return r.blob(); });
-                                tint.useImage(blob);
-                            } catch (e) {}
-                        }
-                    }
-                    return true;
-                } catch (err) {
-                    console.warn('Banuba TINT failed, using fallback', err);
-                    return false;
+            function setHint(msg) {
+                if (!hint) return;
+                if (msg) {
+                    hint.hidden = false;
+                    hint.textContent = msg;
+                } else {
+                    hint.hidden = true;
+                    hint.textContent = '';
                 }
             }
 
-            async function openFallbackTryOn(name, imageUrl) {
+            function cameraSecureHint() {
+                if (window.isSecureContext) return '';
+                return ' Camera needs HTTPS (or localhost). Open this shop via https://' + location.hostname + ' in Herd.';
+            }
+
+            function errText(err) {
+                if (!err) return 'Unknown error';
+                if (typeof err === 'string') return err;
+                return err.message || err.toString() || 'Unknown error';
+            }
+
+            async function waitForDeepAR(ms) {
+                var deadline = Date.now() + (ms || 8000);
+                while (Date.now() < deadline) {
+                    if (typeof window.deepar !== 'undefined' && window.deepar && typeof window.deepar.initialize === 'function') {
+                        return window.deepar;
+                    }
+                    await new Promise(function (r) { setTimeout(r, 100); });
+                }
+                return null;
+            }
+
+            async function stopTry() {
+                if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+                video.srcObject = null;
+                video.hidden = false;
+                overlay.hidden = true;
+                if (preview) {
+                    preview.hidden = true;
+                    preview.innerHTML = '';
+                }
+                setHint('');
+                if (deepARInstance && typeof deepARInstance.shutdown === 'function') {
+                    try { await deepARInstance.shutdown(); } catch (e) {}
+                    deepARInstance = null;
+                }
+                modal.hidden = true;
+            }
+            document.getElementById('try-close').addEventListener('click', function () { stopTry(); });
+            modal.addEventListener('click', function (e) { if (e.target === modal) stopTry(); });
+
+            async function openDeepARTryOn(effectUrl, name) {
+                if (!deeparReady || !deeparLicenseKey || !effectUrl) {
+                    return { ok: false, reason: !effectUrl ? 'No effect file on this product.' : 'DeepAR license missing.' };
+                }
+
                 document.getElementById('try-title').textContent = 'Try · ' + (name || '');
+                video.hidden = true;
+                overlay.hidden = true;
+                fallback.hidden = true;
+                preview.hidden = false;
+                preview.innerHTML = '';
+                setHint('Starting virtual try-on…');
+                modal.hidden = false;
+
+                var api = await waitForDeepAR(8000);
+                if (!api) {
+                    return { ok: false, reason: 'DeepAR SDK did not load. Check network / CDN.' };
+                }
+
+                try {
+                    // Absolute effect URL + rootPath for WASM/models
+                    var absEffect = effectUrl;
+                    if (absEffect.indexOf('http') !== 0) {
+                        absEffect = new URL(absEffect, window.location.origin).href;
+                    }
+
+                    deepARInstance = await api.initialize({
+                        licenseKey: deeparLicenseKey,
+                        previewElement: preview,
+                        effect: absEffect,
+                        rootPath: deeparRootPath,
+                        additionalOptions: {
+                            cameraConfig: {
+                                facingMode: 'user'
+                            }
+                        }
+                    });
+                    setHint('');
+                    return { ok: true };
+                } catch (err) {
+                    console.warn('DeepAR failed', err);
+                    var reason = errText(err) + cameraSecureHint();
+                    // Common license mistake: domain not registered as liba_noop.test
+                    if (/license|domain|app key|unauthorized|forbidden/i.test(reason)) {
+                        reason += ' In DeepAR portal, add domain “' + location.hostname + '” (no https://).';
+                    }
+                    preview.hidden = true;
+                    preview.innerHTML = '';
+                    video.hidden = false;
+                    return { ok: false, reason: reason };
+                }
+            }
+
+            async function openFallbackTryOn(name, imageUrl, message) {
+                document.getElementById('try-title').textContent = 'Try · ' + (name || '');
+                preview.hidden = true;
+                preview.innerHTML = '';
+                video.hidden = false;
                 overlay.src = imageUrl || '';
                 overlay.hidden = !imageUrl;
                 fallback.hidden = true;
-                var hint = document.getElementById('try-banuba-hint');
-                if (hint) hint.hidden = banubaReady;
+                setHint(message || (deeparReady ? '' : 'DeepAR is not configured. Add DEEPAR_LICENSE_KEY to .env.') || '');
                 modal.hidden = false;
                 try {
+                    if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                        throw new Error('insecure');
+                    }
                     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
                     video.srcObject = stream;
                 } catch (err) {
                     fallback.hidden = false;
+                    if (!message) {
+                        setHint('Camera blocked.' + cameraSecureHint());
+                    }
                     if (imageUrl) {
                         overlay.style.inset = '0'; overlay.style.width = '100%';
                         overlay.style.objectFit = 'contain'; overlay.hidden = false;
@@ -452,12 +534,17 @@
                 btn.addEventListener('click', async function () {
                     var name = btn.dataset.name || '';
                     var image = btn.dataset.image || '';
-                    var sku = btn.dataset.sku || '';
-                    if (banubaReady) {
-                        var ok = await openBanubaTryOn(sku, name, image);
-                        if (ok) return;
+                    var effect = (btn.dataset.effect || '').trim();
+                    if (deeparReady && effect) {
+                        var result = await openDeepARTryOn(effect, name);
+                        if (result.ok) return;
+                        await openFallbackTryOn(name, image, 'Virtual try-on failed: ' + (result.reason || 'unknown') + ' Showing a simple preview instead.');
+                        return;
                     }
-                    await openFallbackTryOn(name, image);
+                    var msg = deeparReady && !effect
+                        ? 'No DeepAR effect uploaded for this frame yet. Upload a .deepar file on the product in ERP.'
+                        : null;
+                    await openFallbackTryOn(name, image, msg);
                 });
             });
 

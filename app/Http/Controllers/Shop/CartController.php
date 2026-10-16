@@ -67,11 +67,16 @@ class CartController extends Controller
             'lens_coating_id' => ['nullable', 'integer'],
         ]);
 
-        $coatingId = isset($data['lens_coating_id']) ? (int) $data['lens_coating_id'] : null;
-        if ($coatingId !== null && $coatingId <= 0) {
-            $coatingId = null;
+        if (! empty($cart['prescription']['scanned'])) {
+            // Coating already set from scan (HMC/Bluecut) — do not let the customer override
+            ShopCart::setLensCoating(null);
+        } else {
+            $coatingId = isset($data['lens_coating_id']) ? (int) $data['lens_coating_id'] : null;
+            if ($coatingId !== null && $coatingId <= 0) {
+                $coatingId = null;
+            }
+            ShopCart::setLensCoating($coatingId);
         }
-        ShopCart::setLensCoating($coatingId);
 
         return redirect()->route('shop.checkout');
     }
@@ -122,12 +127,15 @@ class CartController extends Controller
 
         try {
             $scan = $this->scanner->scan($file);
+            // HMC / Bluecut from Rule 9–12 on the scanned text only
             $quote = $this->scanner->quoteFromScan($scan);
             $price = (float) ($quote['price'] ?? 0);
             if (($quote['mode'] ?? '') === 'quote' || $price < 0) {
                 $price = 0.0;
             }
             $scan['pricing'] = $quote;
+            $scan['coating'] = $quote['coating'] ?? 'hmc';
+            $scan['vision_type'] = $quote['vision'] ?? ($scan['vision_type'] ?? 'single');
         } catch (\Throwable $e) {
             return redirect()->route('shop.cart')->with('error', $e->getMessage());
         }
@@ -150,14 +158,15 @@ class CartController extends Controller
 
         ShopCart::setPrescription($path, $scan, $price, $record->id, true, $quote);
 
-        $visionLabel = (($scan['vision_type'] ?? '') === 'progressive')
-            ? 'Progressive prescription'
-            : 'Single prescription';
+        $visionLabel = (string) ($quote['vision_label'] ?? (
+            (($scan['vision_type'] ?? '') === 'progressive') ? 'Progressive vision' : 'Single vision'
+        ));
+        $coatingLabel = (string) ($quote['coating_label'] ?? 'HMC');
 
         $msg = match ($quote['mode'] ?? 'exact') {
-            'range' => $visionLabel.' scanned — estimated lens price range applied.',
-            'quote' => $visionLabel.' scanned — lens price needs lab confirmation.',
-            default => $visionLabel.' scanned — lens price updated.',
+            'range' => $visionLabel.' scanned ('.$coatingLabel.') — estimated lens price range applied.',
+            'quote' => $visionLabel.' scanned ('.$coatingLabel.') — lens price needs lab confirmation.',
+            default => $visionLabel.' scanned ('.$coatingLabel.') — lens price updated.',
         };
 
         return redirect()->route('shop.cart')->with('success', $msg);
@@ -199,11 +208,16 @@ class CartController extends Controller
             'phone.regex' => 'Phone must be a valid Ethiopian mobile (+251 followed by 9 digits).',
         ]);
 
-        $coatingId = isset($data['lens_coating_id']) ? (int) $data['lens_coating_id'] : null;
-        if ($coatingId !== null && $coatingId <= 0) {
-            $coatingId = null;
+        $cart = ShopCart::get();
+        if (! empty($cart['prescription']['scanned'])) {
+            ShopCart::setLensCoating(null);
+        } else {
+            $coatingId = isset($data['lens_coating_id']) ? (int) $data['lens_coating_id'] : null;
+            if ($coatingId !== null && $coatingId <= 0) {
+                $coatingId = null;
+            }
+            ShopCart::setLensCoating($coatingId);
         }
-        ShopCart::setLensCoating($coatingId);
 
         ShopCart::setCustomer(
             (string) ($data['name'] ?? ''),

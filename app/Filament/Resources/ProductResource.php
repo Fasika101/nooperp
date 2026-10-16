@@ -192,6 +192,59 @@ class ProductResource extends Resource
                     ->visibility('public')
                     ->imagePreviewHeight('200')
                     ->columnSpanFull(),
+                FileUpload::make('deepar_effect')
+                    ->label('Virtual try-on (DeepAR effect)')
+                    ->disk('public')
+                    ->directory('products/deepar')
+                    ->visibility('public')
+                    // No acceptedFileTypes: .deepar has no reliable browser MIME (FilePond "invalid type").
+                    // Do not cast TemporaryUploadedFile with (array) — that turns it into property bags
+                    // and falsely fails the .deepar extension check.
+                    ->maxSize(51200)
+                    ->preserveFilenames()
+                    ->rules([
+                        'nullable',
+                        function () {
+                            return function (string $attribute, $value, \Closure $fail): void {
+                                if ($value === null || $value === '' || $value === []) {
+                                    return;
+                                }
+
+                                $items = is_array($value) ? $value : [$value];
+
+                                foreach ($items as $item) {
+                                    if ($item === null || $item === '') {
+                                        continue;
+                                    }
+
+                                    $ok = false;
+                                    if (is_object($item)) {
+                                        $ext = method_exists($item, 'getClientOriginalExtension')
+                                            ? strtolower((string) $item->getClientOriginalExtension())
+                                            : '';
+                                        $name = method_exists($item, 'getClientOriginalName')
+                                            ? strtolower((string) $item->getClientOriginalName())
+                                            : '';
+                                        $ok = $ext === 'deepar' || str_ends_with($name, '.deepar');
+                                    } elseif (is_string($item)) {
+                                        // Already stored path, Livewire temp key, or filename
+                                        $ok = str_ends_with(strtolower($item), '.deepar')
+                                            || str_contains(strtolower($item), '.deepar');
+                                    }
+
+                                    if (! $ok) {
+                                        $fail('Upload a DeepAR effect file ending in .deepar.');
+
+                                        return;
+                                    }
+                                }
+                            };
+                        },
+                    ])
+                    ->helperText('Upload a .deepar file (e.g. from deeparfiles/). Stored on the product for shop Try-on.')
+                    ->downloadable()
+                    ->openable()
+                    ->columnSpanFull(),
                 TextInput::make('name')
                     ->required()
                     ->maxLength(255),

@@ -33,6 +33,7 @@ class ProductCreationService
 
             $product = Product::query()->create([
                 'image' => $this->normalizeProductImage($data['image'] ?? null),
+                'deepar_effect' => $this->normalizeProductImage($data['deepar_effect'] ?? null),
                 'name' => $data['name'],
                 'category_id' => $data['category_id'],
                 'size_option_id' => $selectedSizeId,

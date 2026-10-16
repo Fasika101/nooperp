@@ -28,6 +28,7 @@ class Product extends Model
         'cost_price',
         'stock',
         'image',
+        'deepar_effect',
         'is_service',
     ];
 
