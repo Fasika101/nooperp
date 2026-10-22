@@ -105,6 +105,50 @@ box-shadow: 0 0 0 1px var(--primary-500); }
 .pos-cart-item-right { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 0.25rem; }
 .pos-cart-item-total { font-weight: 600; font-size: 0.875rem; color: rgb(3 7 18); }
 .dark .pos-cart-item-total { color: white; }
+.pos-cart-item-price-btn {
+    font-weight: 600; font-size: 0.875rem; color: rgb(3 7 18);
+    background: none; border: none; padding: 0; cursor: default;
+    text-align: right; font-family: inherit;
+}
+.dark .pos-cart-item-price-btn { color: white; }
+.pos-cart-item-price-btn.is-adjustable {
+    cursor: pointer; color: var(--primary-600);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+}
+.pos-cart-item-price-btn.is-adjustable:hover { color: var(--primary-500); }
+.pos-cart-item-price-btn.is-raised { color: rgb(180 83 9); }
+.dark .pos-cart-item-price-btn.is-raised { color: rgb(251 191 36); }
+.pos-price-adjust-badge {
+    font-size: 0.7rem; font-weight: 600; color: rgb(180 83 9);
+    background: rgb(254 243 199); border: 1px solid rgb(253 230 138);
+    border-radius: 999px; padding: 0.15rem 0.55rem; white-space: nowrap;
+}
+.dark .pos-price-adjust-badge {
+    color: rgb(253 230 138); background: rgba(120, 53, 15, 0.45); border-color: rgb(180 83 9);
+}
+.pos-price-adjust-modal {
+    position: fixed; inset: 0; z-index: 60; background: rgba(15, 23, 42, 0.45);
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.pos-price-adjust-panel {
+    width: min(22rem, 100%); background: white; border-radius: 0.85rem;
+    padding: 1.1rem 1.15rem; box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+}
+.dark .pos-price-adjust-panel { background: rgb(31 41 55); }
+.pos-price-adjust-panel h3 { margin: 0 0 0.35rem; font-size: 1rem; font-weight: 700; color: rgb(3 7 18); }
+.dark .pos-price-adjust-panel h3 { color: white; }
+.pos-price-adjust-panel p { margin: 0 0 0.85rem; font-size: 0.8rem; color: rgb(107 114 128); }
+.pos-price-adjust-panel input {
+    width: 100%; padding: 0.65rem 0.75rem; border-radius: 0.5rem;
+    border: 1px solid rgb(209 213 219); font-size: 1rem; font-weight: 600;
+}
+.dark .pos-price-adjust-panel input {
+    border-color: rgb(75 85 99); background: rgb(17 24 39); color: white;
+}
+.pos-price-adjust-actions { display: flex; gap: 0.5rem; margin-top: 0.85rem; }
+.pos-price-adjust-actions .fi-btn { flex: 1; }
 .pos-cart-item-remove { padding: 0.25rem; border-radius: 0.25rem; color: rgb(220 38 38); background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .pos-cart-item-remove:hover { color: rgb(185 28 28); }
 .pos-cart-item-remove svg { width: 1rem; height: 1rem; }
@@ -656,12 +700,29 @@ box-shadow: 0 0 0 1px var(--primary-500); }
             <div class="pos-cart">
                 <div class="pos-cart-header">
                     <h2>Cart <span>({{ $this->getCartCount() }})</span></h2>
-                    @if(count($cart) > 0)
-                        <x-filament::button color="gray" size="sm" wire:click="clearCart">Clear</x-filament::button>
-                    @endif
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        @if($this->canAdjustCartPricesNow())
+                            @if($this->priceAdjustIsPermanent())
+                                <span class="pos-price-adjust-badge" title="Managers can always raise cart prices">Raise prices on</span>
+                            @elseif($this->priceAdjustSecondsRemaining() > 0)
+                                @php
+                                    $raiseLeft = $this->priceAdjustSecondsRemaining();
+                                    $raiseMm = intdiv($raiseLeft, 60);
+                                    $raiseSs = $raiseLeft % 60;
+                                @endphp
+                                <span class="pos-price-adjust-badge" wire:poll.10s>
+                                    Raise {{ $raiseMm }}:{{ str_pad((string) $raiseSs, 2, '0', STR_PAD_LEFT) }}
+                                </span>
+                            @endif
+                        @endif
+                        @if(count($cart) > 0)
+                            <x-filament::button color="gray" size="sm" wire:click="clearCart">Clear</x-filament::button>
+                        @endif
+                    </div>
                 </div>
 
                 <div class="pos-cart-items">
+                    @php $canRaisePrices = $this->canAdjustCartPricesNow(); @endphp
                     @forelse($cart as $index => $item)
                         <div class="pos-cart-item">
                             <div class="pos-cart-item-img">
@@ -673,6 +734,9 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                             : (! empty($item['is_lens_solution'])
                                                 ? $this->getLensSolutionLineImageUrl()
                                                 : $this->getProductImageUrl($item['image'] ?? null)));
+                                    $lineTotal = (float) $item['price'] * (int) $item['quantity'];
+                                    $isRaised = ! empty($item['price_raised'])
+                                        || (isset($item['base_price']) && (float) $item['price'] > (float) $item['base_price']);
                                 @endphp
                                 <img src="{{ $cartLineImage }}" alt="{{ $item['name'] }}" />
                             </div>
@@ -687,9 +751,28 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                                         <button type="button" wire:click="updateCartQuantity({{ $index }}, {{ $item['quantity'] + 1 }})">+</button>
                                     @endif
                                 </div>
+                                @if($canRaisePrices)
+                                    <div style="margin-top:0.2rem; font-size:0.7rem; color:rgb(107 114 128);">
+                                        Unit {{ \Illuminate\Support\Number::currency($item['price'], $this->getDefaultCurrency()) }}
+                                        @if($isRaised && isset($item['base_price']))
+                                            · was {{ \Illuminate\Support\Number::currency($item['base_price'], $this->getDefaultCurrency()) }}
+                                        @endif
+                                    </div>
+                                @endif
                             </div>
                             <div class="pos-cart-item-right">
-                                <span class="pos-cart-item-total">{{ \Illuminate\Support\Number::currency($item['price'] * $item['quantity'], $this->getDefaultCurrency()) }}</span>
+                                @if($canRaisePrices)
+                                    <button
+                                        type="button"
+                                        class="pos-cart-item-price-btn is-adjustable {{ $isRaised ? 'is-raised' : '' }}"
+                                        wire:click="openPriceAdjust({{ $index }})"
+                                        title="Click to raise this line price"
+                                    >
+                                        {{ \Illuminate\Support\Number::currency($lineTotal, $this->getDefaultCurrency()) }}
+                                    </button>
+                                @else
+                                    <span class="pos-cart-item-total">{{ \Illuminate\Support\Number::currency($lineTotal, $this->getDefaultCurrency()) }}</span>
+                                @endif
                                 <button type="button" wire:click="removeFromCart({{ $index }})" class="pos-cart-item-remove">
                                     <x-filament::icon icon="heroicon-o-trash" />
                                 </button>
@@ -1102,6 +1185,38 @@ box-shadow: 0 0 0 1px var(--primary-500); }
                         <button type="button" class="primary" wire:click="createAffiliateFromModal">Create & use for this sale</button>
                     </div>
                 @endif
+            </div>
+        </div>
+    @endif
+
+    @if($priceAdjustModalOpen)
+        @php
+            $adjItem = ($priceAdjustIndex !== null && isset($cart[$priceAdjustIndex])) ? $cart[$priceAdjustIndex] : null;
+            $adjFloor = $adjItem
+                ? (float) ($adjItem['base_price'] ?? $adjItem['price'] ?? 0)
+                : 0;
+        @endphp
+        <div class="pos-price-adjust-modal" wire:click.self="closePriceAdjust">
+            <div class="pos-price-adjust-panel" wire:click.stop>
+                <h3>Raise line price</h3>
+                <p>
+                    {{ $adjItem['name'] ?? 'Line' }}
+                    · minimum {{ \Illuminate\Support\Number::currency($adjFloor, $this->getDefaultCurrency()) }}
+                    (increase only)
+                </p>
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.35rem; color:rgb(107 114 128);">New unit price</label>
+                <input
+                    type="number"
+                    step="0.01"
+                    min="{{ $adjFloor }}"
+                    wire:model="priceAdjustInput"
+                    wire:keydown.enter.prevent="savePriceAdjust"
+                    autofocus
+                />
+                <div class="pos-price-adjust-actions">
+                    <x-filament::button color="gray" wire:click="closePriceAdjust">Cancel</x-filament::button>
+                    <x-filament::button color="warning" wire:click="savePriceAdjust">Save</x-filament::button>
+                </div>
             </div>
         </div>
     @endif

@@ -23,12 +23,16 @@ use App\Models\LensSolutionType;
 use App\Models\RepairType;
 use App\Models\Setting;
 use App\Models\TaxType;
+use App\Models\User;
+use App\Services\PosCartPriceAdjustService;
 use App\Services\PosTelegramService;
 use App\Support\AffiliateCommission;
 use App\Support\OpticalRxOptions;
 use App\Support\OpticalRxPricing;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
@@ -180,9 +184,187 @@ class PosPage extends Page
     /** Custom add-on price entered by cashier when compound Rx is beyond both tiers */
     public string $customCompoundPrice = '';
 
+    /** Inline cart price raise (timed privilege) */
+    public bool $priceAdjustModalOpen = false;
+
+    public ?int $priceAdjustIndex = null;
+
+    public string $priceAdjustInput = '';
+
     public function mount(): void
     {
         $this->branchId = $this->getResolvedBranchId();
+    }
+
+    protected function getHeaderActions(): array
+    {
+        $service = app(PosCartPriceAdjustService::class);
+        $actor = Auth::user();
+
+        if (! $service->canGrant($actor instanceof User ? $actor : null)) {
+            return [];
+        }
+
+        return [
+            Action::make('grantPriceAdjust')
+                ->label('Unlock price raise')
+                ->icon('heroicon-o-lock-open')
+                ->color('warning')
+                ->modalHeading('Unlock cart price raises')
+                ->modalDescription('Seller can click cart prices and raise them (not lower) until the timer ends.')
+                ->form([
+                    Select::make('user_id')
+                        ->label('Seller')
+                        ->options(fn (): array => User::query()
+                            ->orderBy('name')
+                            ->limit(200)
+                            ->pluck('name', 'id')
+                            ->all())
+                        ->searchable()
+                        ->required()
+                        ->default(fn () => Auth::id()),
+                    TextInput::make('minutes')
+                        ->label('Minutes')
+                        ->numeric()
+                        ->required()
+                        ->minValue(1)
+                        ->maxValue(240)
+                        ->default(5)
+                        ->helperText('How long the seller can raise cart line prices.'),
+                ])
+                ->action(function (array $data) use ($service): void {
+                    $target = User::query()->find((int) ($data['user_id'] ?? 0));
+                    if (! $target) {
+                        Notification::make()->danger()->title('User not found')->send();
+
+                        return;
+                    }
+
+                    if (! $service->hasAdjustPermission($target) && ! $target->hasUnrestrictedBranchAccess()) {
+                        // Still grant — they need the Adjust permission for the UI; warn if missing
+                        Notification::make()
+                            ->warning()
+                            ->title('Granted, but user may lack AdjustPosCartPrices')
+                            ->body('Assign the AdjustPosCartPrices permission (sales role) so they can use the unlock.')
+                            ->send();
+                    }
+
+                    $until = $service->grant($target, (int) ($data['minutes'] ?? 5));
+                    Notification::make()
+                        ->success()
+                        ->title('Price raise unlocked')
+                        ->body($target->name.' until '.$until->timezone(config('app.timezone'))->format('H:i'))
+                        ->send();
+                }),
+        ];
+    }
+
+    public function canAdjustCartPricesNow(): bool
+    {
+        $user = Auth::user();
+
+        return app(PosCartPriceAdjustService::class)->isUnlocked($user instanceof User ? $user : null);
+    }
+
+    public function priceAdjustSecondsRemaining(): int
+    {
+        $user = Auth::user();
+        $seconds = app(PosCartPriceAdjustService::class)->secondsRemaining($user instanceof User ? $user : null);
+
+        return $seconds === PHP_INT_MAX ? 0 : $seconds;
+    }
+
+    public function priceAdjustIsPermanent(): bool
+    {
+        $user = Auth::user();
+
+        return $user instanceof User && $user->hasUnrestrictedBranchAccess()
+            && app(PosCartPriceAdjustService::class)->hasAdjustPermission($user);
+    }
+
+    public function openPriceAdjust(int $index): void
+    {
+        if (! $this->canAdjustCartPricesNow()) {
+            Notification::make()
+                ->warning()
+                ->title('Price raise locked')
+                ->body('Ask a super admin to unlock price raises for a few minutes.')
+                ->send();
+
+            return;
+        }
+
+        if (! isset($this->cart[$index])) {
+            return;
+        }
+
+        $item = $this->cart[$index];
+        $this->priceAdjustIndex = $index;
+        $this->priceAdjustInput = number_format((float) ($item['price'] ?? 0), 2, '.', '');
+        $this->priceAdjustModalOpen = true;
+    }
+
+    public function closePriceAdjust(): void
+    {
+        $this->priceAdjustModalOpen = false;
+        $this->priceAdjustIndex = null;
+        $this->priceAdjustInput = '';
+    }
+
+    public function savePriceAdjust(): void
+    {
+        if (! $this->canAdjustCartPricesNow()) {
+            Notification::make()->warning()->title('Price raise locked')->send();
+            $this->closePriceAdjust();
+
+            return;
+        }
+
+        $index = $this->priceAdjustIndex;
+        if ($index === null || ! isset($this->cart[$index])) {
+            $this->closePriceAdjust();
+
+            return;
+        }
+
+        $raw = trim($this->priceAdjustInput);
+        if ($raw === '' || ! is_numeric($raw)) {
+            Notification::make()->warning()->title('Enter a valid price')->send();
+
+            return;
+        }
+
+        $newPrice = round((float) $raw, 2);
+        $item = $this->cart[$index];
+        $floor = isset($item['base_price'])
+            ? (float) $item['base_price']
+            : (float) ($item['price'] ?? 0);
+
+        // Ensure floor is stored for next edits
+        if (! isset($this->cart[$index]['base_price'])) {
+            $this->cart[$index]['base_price'] = $floor;
+        }
+
+        if ($newPrice < $floor) {
+            Notification::make()
+                ->warning()
+                ->title('Cannot lower price')
+                ->body('You can only raise the price. Minimum is '.number_format($floor, 2).'.')
+                ->send();
+
+            return;
+        }
+
+        $this->cart[$index]['price'] = $newPrice;
+        $this->cart[$index]['price_raised'] = $newPrice > $floor;
+
+        Notification::make()
+            ->success()
+            ->title('Price updated')
+            ->body($item['name'].' → '.number_format($newPrice, 2))
+            ->send();
+
+        $this->closePriceAdjust();
     }
 
     /** @var \Illuminate\Support\Collection<int, Product>|null Memoized filtered products for this request */
@@ -620,6 +802,7 @@ class PosPage extends Page
             $this->cart[$idx]['quantity']++;
         } else {
             $lineLabel = $product->formatNameWithVariant($sizeOptionId, $colorOptionId);
+            $unitPrice = (float) $product->price;
             $this->cart[] = [
                 'product_id' => $product->id,
                 'name' => $lineLabel,
@@ -628,7 +811,8 @@ class PosPage extends Page
                 'size_option_id' => $sizeOptionId,
                 'color_name' => $colorOptionId ? (string) ProductOption::query()->whereKey($colorOptionId)->value('name') : null,
                 'size_name' => $sizeOptionId ? (string) ProductOption::query()->whereKey($sizeOptionId)->value('name') : null,
-                'price' => (float) $product->price,
+                'price' => $unitPrice,
+                'base_price' => $unitPrice,
                 'unit_cost' => (float) ($product->cost_price ?? 0),
                 'quantity' => 1,
                 'image' => $product->image,
@@ -1824,6 +2008,7 @@ class PosPage extends Page
             'color_name' => null,
             'size_name' => null,
             'price' => $price,
+            'base_price' => $price,
             'unit_cost' => 0.0,
             'quantity' => 1,
             'image' => null,
@@ -2062,6 +2247,7 @@ class PosPage extends Page
             'color_name' => null,
             'size_name' => null,
             'price' => $price,
+            'base_price' => $price,
             'unit_cost' => 0.0,
             'quantity' => 1,
             'image' => null,
@@ -2140,6 +2326,7 @@ class PosPage extends Page
             'color_name' => null,
             'size_name' => null,
             'price' => $price,
+            'base_price' => $price,
             'unit_cost' => 0.0,
             'quantity' => 1,
             'image' => null,

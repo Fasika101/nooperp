@@ -205,6 +205,7 @@ class RolesSeeder extends Seeder
             'View:RevenueChartWidget',
             'View:SalesChartWidget',
             'View:AccountsReceivablePage',
+            'AdjustPosCartPrices',
         ]);
     }
 
