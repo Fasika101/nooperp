@@ -237,6 +237,10 @@ class ShopCatalogService
             // Binocular PD range (mm) from ERP; both null => no fit verdict in try-on
             'pd_fit_min_mm' => $product->pd_fit_min_mm !== null ? (float) $product->pd_fit_min_mm : null,
             'pd_fit_max_mm' => $product->pd_fit_max_mm !== null ? (float) $product->pd_fit_max_mm : null,
+            // Frame box size (mm) — lets the face scan judge overall width and derive a PD band
+            'lens_width_mm' => $product->lens_width_mm !== null ? (float) $product->lens_width_mm : null,
+            'bridge_width_mm' => $product->bridge_width_mm !== null ? (float) $product->bridge_width_mm : null,
+            'temple_length_mm' => $product->temple_length_mm !== null ? (float) $product->temple_length_mm : null,
             'location' => $this->locationForProduct($product),
         ];
     }

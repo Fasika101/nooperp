@@ -79,6 +79,7 @@ class ShopController extends Controller
             'deeparLicenseKey' => $deeparKey,
             'deeparSdkUrl' => (string) config('storefront.deepar.sdk_url'),
             'pdMeter' => (array) config('storefront.pd_meter', []),
+            'pdScanUrl' => $this->pdScanUrl(),
             'stickyNav' => true,
             'backUrl' => route('shop.gender'),
             'backLabel' => 'Back',
@@ -86,6 +87,20 @@ class ShopController extends Controller
             'hasDock' => ShopCart::totals()['item_count'] > 0,
             'showShopSearch' => true,
         ]);
+    }
+
+    /**
+     * Cache-busted URL of the browser-side face-scan / PD module (public/js/shop/pd-face-scan.js).
+     * Empty string when the file is missing so the try-on silently skips PD.
+     */
+    protected function pdScanUrl(): string
+    {
+        $path = public_path('js/shop/pd-face-scan.js');
+        if (! is_file($path)) {
+            return '';
+        }
+
+        return asset('js/shop/pd-face-scan.js').'?v='.filemtime($path);
     }
 
     public function search(Request $request): View|RedirectResponse
@@ -124,6 +139,7 @@ class ShopController extends Controller
             'deeparLicenseKey' => $deeparKey,
             'deeparSdkUrl' => (string) config('storefront.deepar.sdk_url'),
             'pdMeter' => (array) config('storefront.pd_meter', []),
+            'pdScanUrl' => $this->pdScanUrl(),
             'stickyNav' => true,
             'backUrl' => ! empty($cart['gender_id']) ? route('shop.frames') : route('shop.gender'),
             'backLabel' => 'Back',

@@ -87,6 +87,11 @@ return [
         'model_url' => env('SHOP_PD_MODEL_URL', 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'),
         // Average adult horizontal iris diameter in mm (population std ~0.5 mm)
         'iris_diameter_mm' => (float) env('SHOP_PD_IRIS_MM', 11.7),
+        // MediaPipe draws the iris ring ~5% outside the visible iris; scale ring → true iris.
+        'iris_ring_scale' => (float) env('SHOP_PD_IRIS_RING_SCALE', 0.95),
+        // Multiplier applied to the measured (distance) PD. Tune once against a real PD
+        // ruler: measure a few staff with the shop tool and the ruler, set ruler/tool average.
+        'calibration' => (float) env('SHOP_PD_CALIBRATION', 1.0),
     ],
 
     /*
