@@ -29,6 +29,8 @@ class Product extends Model
         'stock',
         'image',
         'deepar_effect',
+        'pd_fit_min_mm',
+        'pd_fit_max_mm',
         'is_service',
     ];
 
@@ -40,6 +42,8 @@ class Product extends Model
             'lens_width_mm' => 'decimal:1',
             'bridge_width_mm' => 'decimal:1',
             'temple_length_mm' => 'decimal:1',
+            'pd_fit_min_mm' => 'decimal:1',
+            'pd_fit_max_mm' => 'decimal:1',
             'is_service' => 'boolean',
         ];
     }

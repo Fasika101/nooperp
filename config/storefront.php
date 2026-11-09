@@ -73,6 +73,23 @@ return [
     ],
 
     /*
+    | In-browser PD (pupillary distance) meter shown inside the shop try-on.
+    | Uses Google MediaPipe Face Landmarker (free, open source) fully client-side:
+    | no video ever reaches the server. Iris diameter (~11.7 mm) is the mm scale.
+    | Products carry pd_fit_min_mm / pd_fit_max_mm so the try-on can say
+    | "fits / too big / too small" against the measured PD.
+    */
+    'pd_meter' => [
+        'enabled' => filter_var(env('SHOP_PD_METER_ENABLED', true), FILTER_VALIDATE_BOOL),
+        // ESM bundle + wasm folder of @mediapipe/tasks-vision (pin a version)
+        'tasks_vision_url' => env('SHOP_PD_TASKS_VISION_URL', 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs'),
+        'wasm_url' => env('SHOP_PD_WASM_URL', 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'),
+        'model_url' => env('SHOP_PD_MODEL_URL', 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'),
+        // Average adult horizontal iris diameter in mm (population std ~0.5 mm)
+        'iris_diameter_mm' => (float) env('SHOP_PD_IRIS_MM', 11.7),
+    ],
+
+    /*
     | Banuba TINT (legacy — shop try-on uses DeepAR).
     */
     'banuba' => [

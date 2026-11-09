@@ -234,6 +234,9 @@ class ShopCatalogService
             'variants' => $inStock->all(),
             // DeepAR effect URL from ERP product upload (null when not set)
             'try_on_effect_url' => $this->imageUrl($product->deepar_effect),
+            // Binocular PD range (mm) from ERP; both null => no fit verdict in try-on
+            'pd_fit_min_mm' => $product->pd_fit_min_mm !== null ? (float) $product->pd_fit_min_mm : null,
+            'pd_fit_max_mm' => $product->pd_fit_max_mm !== null ? (float) $product->pd_fit_max_mm : null,
             'location' => $this->locationForProduct($product),
         ];
     }

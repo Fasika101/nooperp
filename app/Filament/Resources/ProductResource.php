@@ -129,6 +129,19 @@ class ProductResource extends Resource
                             ->placeholder('—'),
                     ])
                     ->columns(3),
+                Section::make('Try-on PD fit')
+                    ->description('Customer binocular PD range (mm) this frame fits in the shop virtual try-on.')
+                    ->schema([
+                        TextEntry::make('pd_fit_min_mm')
+                            ->label('Fits PD from')
+                            ->suffix(' mm')
+                            ->placeholder('—'),
+                        TextEntry::make('pd_fit_max_mm')
+                            ->label('Fits PD up to')
+                            ->suffix(' mm')
+                            ->placeholder('—'),
+                    ])
+                    ->columns(2),
                 Section::make('Pricing & stock')
                     ->schema([
                         TextEntry::make('cost_price')
@@ -244,6 +257,33 @@ class ProductResource extends Resource
                     ->helperText('Upload a .deepar file (e.g. from deeparfiles/). Stored on the product for shop Try-on.')
                     ->downloadable()
                     ->openable()
+                    ->columnSpanFull(),
+                Section::make('Try-on PD fit')
+                    ->description('Binocular PD range (mm) this frame fits well. During virtual try-on the shop measures the customer\'s PD in the browser and tells them if this frame is too big / too small. Leave both empty to skip the fit check for this frame.')
+                    ->schema([
+                        TextInput::make('pd_fit_min_mm')
+                            ->label('Fits PD from')
+                            ->numeric()
+                            ->suffix('mm')
+                            ->minValue(40)
+                            ->maxValue(90)
+                            ->step(0.5)
+                            ->placeholder('e.g. 58')
+                            ->requiredWith('pd_fit_max_mm')
+                            ->lte('pd_fit_max_mm'),
+                        TextInput::make('pd_fit_max_mm')
+                            ->label('Fits PD up to')
+                            ->numeric()
+                            ->suffix('mm')
+                            ->minValue(40)
+                            ->maxValue(90)
+                            ->step(0.5)
+                            ->placeholder('e.g. 66')
+                            ->requiredWith('pd_fit_min_mm')
+                            ->gte('pd_fit_min_mm'),
+                    ])
+                    ->columns(2)
+                    ->collapsed(false)
                     ->columnSpanFull(),
                 TextInput::make('name')
                     ->required()

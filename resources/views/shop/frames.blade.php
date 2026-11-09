@@ -60,6 +60,7 @@
                         </p>
                         <div class="frame-actions">
                             <button type="button" class="btn btn-ghost btn-sm try-btn"
+                                data-product-id="{{ $frame['id'] }}"
                                 data-name="{{ $frame['name'] }}"
                                 data-image="{{ $frame['image'] }}"
                                 data-effect="{{ $frame['try_on_effect_url'] ?? '' }}">Try</button>
@@ -131,13 +132,33 @@
         <div class="try-panel">
             <div class="try-top">
                 <strong id="try-title">Try on</strong>
-                <button type="button" class="btn btn-ghost btn-sm" id="try-close">Close</button>
+                <div class="try-top-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" id="pd-toggle" hidden aria-pressed="true">Hide PD</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="try-close">Close</button>
+                </div>
             </div>
             <div class="try-stage" id="try-stage">
                 <div id="deepar-preview" class="deepar-preview" hidden></div>
                 <video id="try-video" playsinline muted autoplay></video>
                 <img id="try-overlay" alt="" hidden>
+                {{-- PD meter overlay: face guide + live reading. Toggle with "Hide PD". --}}
+                <div id="pd-layer" class="pd-layer" hidden aria-live="polite">
+                    <div class="pd-guide" id="pd-guide">
+                        <div class="pd-guide-oval"></div>
+                        <div class="pd-guide-eyes"><span></span><span></span></div>
+                    </div>
+                    <div class="pd-pill" id="pd-pill">
+                        <span class="pd-pill-label">PD</span>
+                        <span class="pd-pill-value" id="pd-pill-value">—</span>
+                    </div>
+                    <div class="pd-coach" id="pd-coach">Face the camera straight, about 40 cm (16 in) away.</div>
+                </div>
                 <p id="try-fallback" class="page-sub" hidden>Camera not available. Showing frame preview.</p>
+            </div>
+            <div id="pd-verdict" class="pd-verdict" hidden></div>
+            <div id="pd-actions" class="pd-actions" hidden>
+                <button type="button" class="btn btn-ghost btn-sm" id="pd-remeasure">Re-measure PD</button>
+                <span class="pd-note">Camera estimate (±2–3 mm) for frame fit only — not for ordering lenses.</span>
             </div>
             <p id="try-hint" class="page-sub" style="margin:0.75rem 0 0;" hidden></p>
         </div>
@@ -247,7 +268,7 @@
         }
         .try-panel {
             width: min(480px, 100%); background: var(--bg); border-radius: 1.25rem;
-            padding: 1rem; max-height: 90dvh;
+            padding: 1rem; max-height: 90dvh; overflow-y: auto;
         }
         .try-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; }
         .try-stage {
@@ -264,6 +285,64 @@
         }
         #try-fallback { position:absolute; inset:auto 1rem 1rem; color:#fff; z-index: 3; }
         #pick-form { margin-top: 1rem; }
+        .try-top-actions { display:flex; gap:0.4rem; align-items:center; }
+        .try-top-actions .btn { width:auto; }
+        /* Selfie-style mirror for the plain camera preview (DeepAR mirrors itself) */
+        #try-video.is-mirrored { transform: scaleX(-1); }
+
+        /* ---- PD meter overlay ---- */
+        .pd-layer { position:absolute; inset:0; z-index:4; pointer-events:none; }
+        .pd-layer[hidden] { display:none !important; }
+        .pd-guide { position:absolute; inset:0; transition: opacity 0.25s ease; }
+        .pd-guide.is-off { opacity:0; }
+        .pd-guide-oval {
+            position:absolute; left:50%; top:46%; width:62%; aspect-ratio: 3 / 4;
+            transform: translate(-50%, -50%);
+            border: 2px dashed rgba(255,255,255,0.85); border-radius: 50% / 46%;
+            box-shadow: 0 0 0 9999px rgba(15,23,42,0.28);
+        }
+        .pd-guide.is-good .pd-guide-oval { border-color: #4ade80; border-style: solid; }
+        .pd-guide-eyes {
+            position:absolute; left:50%; top:38%; width:62%; transform: translateX(-50%);
+            display:flex; justify-content:center; gap: 18%;
+        }
+        .pd-guide-eyes::before {
+            content:""; position:absolute; left:8%; right:8%; top:50%; height:1px;
+            background: rgba(255,255,255,0.55);
+        }
+        .pd-guide-eyes span {
+            width: 1.6rem; height: 1.6rem; border-radius:50%;
+            border: 2px solid rgba(255,255,255,0.9); position:relative;
+        }
+        .pd-pill {
+            position:absolute; left:0.65rem; top:0.65rem; display:flex; align-items:baseline; gap:0.35rem;
+            background: rgba(15,23,42,0.72); color:#fff; backdrop-filter: blur(6px);
+            padding: 0.4rem 0.7rem; border-radius: 999px; font-weight:700; font-size:0.85rem;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .pd-pill-label { font-size:0.65rem; letter-spacing:0.08em; text-transform:uppercase; opacity:0.8; }
+        .pd-pill.is-locked { background: rgba(22,101,52,0.85); border-color: rgba(134,239,172,0.6); }
+        .pd-pill.is-locked .pd-pill-value::after { content:" ✓"; }
+        .pd-coach {
+            position:absolute; left:0.65rem; right:0.65rem; bottom:0.65rem; text-align:center;
+            background: rgba(15,23,42,0.72); color:#fff; backdrop-filter: blur(6px);
+            padding: 0.5rem 0.75rem; border-radius: 0.75rem; font-size:0.8rem; font-weight:600; line-height:1.3;
+        }
+        .pd-coach:empty { display:none; }
+        .pd-verdict {
+            margin: 0.75rem 0 0; padding: 0.7rem 0.85rem; border-radius: 0.85rem;
+            font-size: 0.85rem; font-weight: 600; line-height: 1.35; border: 1px solid transparent;
+        }
+        .pd-verdict[hidden] { display:none !important; }
+        .pd-verdict.is-good { background:#dcfce7; color:#14532d; border-color:#86efac; }
+        .pd-verdict.is-big { background:#fef3c7; color:#78350f; border-color:#fcd34d; }
+        .pd-verdict.is-small { background:#fee2e2; color:#7f1d1d; border-color:#fca5a5; }
+        .pd-verdict.is-neutral { background:#e0e7ff; color:#312e81; border-color:#c7d2fe; }
+        .pd-verdict small { display:block; font-weight:500; opacity:0.85; margin-top:0.2rem; }
+        .pd-actions { display:flex; align-items:center; gap:0.6rem; margin-top:0.6rem; flex-wrap:wrap; }
+        .pd-actions[hidden] { display:none !important; }
+        .pd-actions .btn { width:auto; }
+        .pd-note { font-size:0.7rem; color: var(--ink-soft); flex:1 1 12rem; }
     </style>
 
     <script>
@@ -396,6 +475,356 @@
             var hint = document.getElementById('try-hint');
             var stream = null;
             var deepARInstance = null;
+            var currentFrame = null; // product JSON for the frame being tried (pd_fit_* lives here)
+
+            // ---------------------------------------------------------------
+            // PD meter — runs 100% in the browser (MediaPipe Face Landmarker).
+            // Scale: iris diameter ≈ 11.7 mm. Nothing is uploaded to the server.
+            // ---------------------------------------------------------------
+            var pdCfg = @json($pdMeter ?? []);
+            var PD = (function () {
+                var enabled = !!(pdCfg && pdCfg.enabled && window.isSecureContext);
+                var IRIS_MM = parseFloat(pdCfg.iris_diameter_mm) || 11.7;
+                var NEED = 30;          // good frames before we lock a reading
+                var INTERVAL = 120;     // ms between detections (~8 fps keeps phones cool)
+                var ASSUMED_HFOV = 65;  // deg; only used to coach "move closer / back"
+                var STORE_KEY = 'shop_pd_mm';
+
+                var landmarker = null, loadPromise = null;
+                var running = false, rafId = null, lastTs = 0, tickCount = 0;
+                var samples = [];
+                var result = null;          // { pd: Number, at: ms }
+                var visible = true;
+                var source = null;          // HTMLVideoElement we read frames from
+                var ownStream = null;       // when PD had to open its own camera
+                var ownVideo = null;
+                var onLocked = null;
+
+                var layer = document.getElementById('pd-layer');
+                var guide = document.getElementById('pd-guide');
+                var pill = document.getElementById('pd-pill');
+                var pillValue = document.getElementById('pd-pill-value');
+                var coachEl = document.getElementById('pd-coach');
+                var toggleBtn = document.getElementById('pd-toggle');
+                var verdictEl = document.getElementById('pd-verdict');
+                var actionsEl = document.getElementById('pd-actions');
+                var remeasureBtn = document.getElementById('pd-remeasure');
+
+                var lum = document.createElement('canvas');
+                lum.width = 32; lum.height = 24;
+                var lumCtx = lum.getContext('2d', { willReadFrequently: true });
+
+                function fmt(v) { return (Math.round(v * 2) / 2).toFixed(1).replace(/\.0$/, ''); }
+                function coach(msg) { if (coachEl) coachEl.textContent = msg || ''; }
+                function dist(a, b, w, h) {
+                    var dx = (a.x - b.x) * w, dy = (a.y - b.y) * h;
+                    return Math.sqrt(dx * dx + dy * dy);
+                }
+                function median(arr) {
+                    var s = arr.slice().sort(function (a, b) { return a - b; });
+                    var m = s.length >> 1;
+                    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+                }
+                function quantile(sorted, q) {
+                    var pos = (sorted.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+                    return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+                }
+
+                function restore() {
+                    try {
+                        var raw = sessionStorage.getItem(STORE_KEY);
+                        if (!raw) return null;
+                        var v = JSON.parse(raw);
+                        if (v && isFinite(v.pd) && v.pd > 40 && v.pd < 90) return v;
+                    } catch (e) {}
+                    return null;
+                }
+                function persist(v) {
+                    try { sessionStorage.setItem(STORE_KEY, JSON.stringify(v)); } catch (e) {}
+                }
+
+                async function load() {
+                    if (landmarker) return landmarker;
+                    if (loadPromise) return loadPromise;
+                    loadPromise = (async function () {
+                        var vision = await import(pdCfg.tasks_vision_url);
+                        var files = await vision.FilesetResolver.forVisionTasks(pdCfg.wasm_url);
+                        var make = function (delegate) {
+                            return vision.FaceLandmarker.createFromOptions(files, {
+                                baseOptions: { modelAssetPath: pdCfg.model_url, delegate: delegate },
+                                runningMode: 'VIDEO',
+                                numFaces: 1,
+                                outputFaceBlendshapes: false,
+                                outputFacialTransformationMatrixes: false
+                            });
+                        };
+                        try {
+                            landmarker = await make('GPU');
+                        } catch (e) {
+                            console.warn('PD: GPU delegate failed, using CPU', e);
+                            landmarker = await make('CPU');
+                        }
+                        return landmarker;
+                    })();
+                    try { return await loadPromise; } finally { loadPromise = null; }
+                }
+
+                function brightness(v) {
+                    try {
+                        lumCtx.drawImage(v, 0, 0, lum.width, lum.height);
+                        var d = lumCtx.getImageData(0, 0, lum.width, lum.height).data;
+                        var sum = 0;
+                        for (var i = 0; i < d.length; i += 4) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                        return sum / (d.length / 4);
+                    } catch (e) { return 128; }
+                }
+
+                var lastLum = 128;
+
+                function analyse(lm, w, h) {
+                    // Iris centres + horizontal iris edges (MediaPipe refined landmarks)
+                    var rC = lm[468], lC = lm[473];
+                    var rW = dist(lm[469], lm[471], w, h);
+                    var lW = dist(lm[474], lm[476], w, h);
+                    var irisPx = (rW + lW) / 2;
+                    var pdPx = dist(rC, lC, w, h);
+
+                    // Head yaw from nose vs. outer eye corners (asymmetry ≈ turn)
+                    var nose = lm[1], rCorner = lm[33], lCorner = lm[263];
+                    var dR = Math.abs(nose.x - rCorner.x), dL = Math.abs(lCorner.x - nose.x);
+                    var yawAsym = (dL - dR) / Math.max(1e-6, dL + dR);
+                    // Roll from the iris line
+                    var roll = Math.atan2((lC.y - rC.y) * h, (lC.x - rC.x) * w) * 180 / Math.PI;
+                    // Rough distance from assumed FOV (coaching only)
+                    var focalPx = (w / 2) / Math.tan(ASSUMED_HFOV / 2 * Math.PI / 180);
+                    var distCm = irisPx > 0 ? (IRIS_MM * focalPx / irisPx) / 10 : 999;
+                    // Face centring inside the oval
+                    var cx = (rC.x + lC.x) / 2, cy = (rC.y + lC.y) / 2;
+
+                    return {
+                        pdMm: pdPx * (IRIS_MM / irisPx),
+                        irisPx: irisPx,
+                        yawAsym: yawAsym,
+                        roll: roll,
+                        distCm: distCm,
+                        cx: cx, cy: cy,
+                        irisSpread: Math.abs(rW - lW) / irisPx
+                    };
+                }
+
+                function problem(a) {
+                    if (a.irisPx < 7 || a.distCm > 62) return 'Move a little closer — about 40 cm (16 in) from the camera.';
+                    if (a.distCm < 26) return 'Move back a little — about 40 cm (16 in) from the camera.';
+                    if (Math.abs(a.yawAsym) > 0.22) return 'Turn to face the camera straight.';
+                    if (Math.abs(a.roll) > 9) return 'Level your head — keep both eyes on the line.';
+                    if (a.cx < 0.3 || a.cx > 0.7 || a.cy < 0.22 || a.cy > 0.62) return 'Center your face in the oval, eyes on the line.';
+                    if (a.irisSpread > 0.22) return 'Look straight into the camera and hold still.';
+                    if (lastLum < 55) return 'Need more light — face a window or lamp.';
+                    return null;
+                }
+
+                function tick(ts) {
+                    if (!running) return;
+                    rafId = requestAnimationFrame(tick);
+                    if (ts - lastTs < INTERVAL) return;
+                    lastTs = ts;
+                    var v = source;
+                    if (!v || v.readyState < 2 || !v.videoWidth) return;
+                    tickCount++;
+                    if (tickCount % 6 === 0) lastLum = brightness(v);
+
+                    var res;
+                    try { res = landmarker.detectForVideo(v, performance.now()); } catch (e) { return; }
+                    var lm = res && res.faceLandmarks && res.faceLandmarks[0];
+                    if (!lm || lm.length < 478) {
+                        samples = [];
+                        guide.classList.remove('is-good');
+                        coach('No face found — look at the camera, about 40 cm away.');
+                        pillValue.textContent = '—';
+                        return;
+                    }
+                    var a = analyse(lm, v.videoWidth, v.videoHeight);
+                    var bad = problem(a);
+                    if (bad) {
+                        if (samples.length > 6) samples.splice(0, 3); // decay, don't nuke
+                        guide.classList.remove('is-good');
+                        coach(bad);
+                        return;
+                    }
+                    guide.classList.add('is-good');
+                    if (a.pdMm > 45 && a.pdMm < 85) samples.push(a.pdMm);
+                    var live = samples.length ? median(samples) : a.pdMm;
+                    pillValue.textContent = fmt(live) + ' mm';
+                    coach('Hold still… ' + Math.min(100, Math.round(samples.length / NEED * 100)) + '%');
+
+                    if (samples.length >= NEED) {
+                        var s = samples.slice().sort(function (x, y) { return x - y; });
+                        var spread = quantile(s, 0.75) - quantile(s, 0.25);
+                        if (spread <= 2.0) {
+                            lock(median(s));
+                        } else {
+                            samples = samples.slice(Math.floor(samples.length / 2));
+                            coach('Almost — hold still a moment longer.');
+                        }
+                    }
+                }
+
+                function lock(pd) {
+                    result = { pd: Math.round(pd * 2) / 2, at: Date.now() };
+                    persist(result);
+                    stopLoop();
+                    paintLocked();
+                    if (onLocked) onLocked(result);
+                }
+
+                function paintLocked() {
+                    pill.classList.add('is-locked');
+                    pillValue.textContent = fmt(result.pd) + ' mm';
+                    guide.classList.add('is-off');
+                    coach('');
+                    actionsEl.hidden = !visible;
+                }
+
+                function paintMeasuring() {
+                    pill.classList.remove('is-locked');
+                    pillValue.textContent = '…';
+                    guide.classList.remove('is-off', 'is-good');
+                    coach('Face the camera straight, about 40 cm (16 in) away. Eyes on the line.');
+                    actionsEl.hidden = true;
+                    verdictEl.hidden = true;
+                }
+
+                function startLoop() {
+                    if (running || !landmarker || !source) return;
+                    running = true;
+                    lastTs = 0;
+                    rafId = requestAnimationFrame(tick);
+                }
+                function stopLoop() {
+                    running = false;
+                    if (rafId) cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
+
+                async function openOwnCamera() {
+                    ownVideo = document.createElement('video');
+                    ownVideo.setAttribute('playsinline', '');
+                    ownVideo.muted = true;
+                    ownStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                    ownVideo.srcObject = ownStream;
+                    await ownVideo.play().catch(function () {});
+                    return ownVideo;
+                }
+                function closeOwnCamera() {
+                    if (ownStream) { ownStream.getTracks().forEach(function (t) { t.stop(); }); ownStream = null; }
+                    if (ownVideo) { ownVideo.srcObject = null; ownVideo = null; }
+                }
+
+                function applyVisibility() {
+                    layer.hidden = !visible;
+                    toggleBtn.textContent = visible ? 'Hide PD' : 'Show PD';
+                    toggleBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+                    if (!visible) {
+                        verdictEl.hidden = true;
+                        actionsEl.hidden = true;
+                        stopLoop();
+                    } else {
+                        if (result) { paintLocked(); if (onLocked) onLocked(result); }
+                        else { paintMeasuring(); startLoop(); }
+                    }
+                }
+
+                toggleBtn.addEventListener('click', function () {
+                    visible = !visible;
+                    applyVisibility();
+                });
+                remeasureBtn.addEventListener('click', function () {
+                    result = null;
+                    samples = [];
+                    try { sessionStorage.removeItem(STORE_KEY); } catch (e) {}
+                    visible = true;
+                    applyVisibility();
+                });
+
+                /**
+                 * Start the PD meter.
+                 * @param {HTMLVideoElement|null} videoEl  shared camera element, or null to open our own
+                 * @param {Function} lockedCb               called with {pd} when a reading is ready (or restored)
+                 */
+                async function start(videoEl, lockedCb) {
+                    if (!enabled) return false;
+                    onLocked = lockedCb || null;
+                    toggleBtn.hidden = false;
+                    visible = true;
+                    samples = [];
+                    result = restore();
+                    layer.hidden = false;
+                    pillValue.textContent = '…';
+                    coach('Loading PD meter…');
+                    try {
+                        await load();
+                        source = videoEl || await openOwnCamera();
+                    } catch (e) {
+                        console.warn('PD meter unavailable', e);
+                        layer.hidden = true;
+                        toggleBtn.hidden = true;
+                        return false;
+                    }
+                    applyVisibility();
+                    return true;
+                }
+
+                function stop() {
+                    stopLoop();
+                    closeOwnCamera();
+                    source = null;
+                    onLocked = null;
+                    samples = [];
+                    layer.hidden = true;
+                    toggleBtn.hidden = true;
+                    verdictEl.hidden = true;
+                    actionsEl.hidden = true;
+                    pill.classList.remove('is-locked');
+                    guide.classList.remove('is-off', 'is-good');
+                }
+
+                /** Compare a locked PD with the product's ERP range and render the verdict. */
+                function renderVerdict(frame) {
+                    if (!result || !visible) { verdictEl.hidden = true; return; }
+                    var pd = result.pd;
+                    var min = frame && frame.pd_fit_min_mm != null ? parseFloat(frame.pd_fit_min_mm) : null;
+                    var max = frame && frame.pd_fit_max_mm != null ? parseFloat(frame.pd_fit_max_mm) : null;
+                    var TOL = 0.5; // half-step tolerance on the band edges
+                    verdictEl.hidden = false;
+                    verdictEl.className = 'pd-verdict';
+                    if (min === null && max === null) {
+                        verdictEl.classList.add('is-neutral');
+                        verdictEl.innerHTML = 'Your PD is about <strong>' + fmt(pd) + ' mm</strong>.'
+                            + '<small>Fit range is not set for this frame yet, so we can\'t confirm the fit.</small>';
+                        return;
+                    }
+                    var range = (min !== null ? fmt(min) : '…') + '–' + (max !== null ? fmt(max) : '…') + ' mm';
+                    if (min !== null && pd < min - TOL) {
+                        verdictEl.classList.add('is-big');
+                        verdictEl.innerHTML = 'This frame looks <strong>too big</strong> for you.'
+                            + '<small>Your PD ≈ ' + fmt(pd) + ' mm · this frame fits ' + range + '. Try a narrower frame.</small>';
+                    } else if (max !== null && pd > max + TOL) {
+                        verdictEl.classList.add('is-small');
+                        verdictEl.innerHTML = 'This frame looks <strong>too small</strong> for you.'
+                            + '<small>Your PD ≈ ' + fmt(pd) + ' mm · this frame fits ' + range + '. Try a wider frame.</small>';
+                    } else {
+                        verdictEl.classList.add('is-good');
+                        verdictEl.innerHTML = '<strong>Fits your PD.</strong> Measured ≈ ' + fmt(pd) + ' mm, within this frame\'s ' + range + ' range.';
+                    }
+                }
+
+                return { enabled: enabled, start: start, stop: stop, renderVerdict: renderVerdict };
+            })();
+
+            function startPdFor(videoEl) {
+                if (!PD.enabled) return;
+                PD.start(videoEl, function () { PD.renderVerdict(currentFrame); }).catch(function () {});
+            }
 
             function setHint(msg) {
                 if (!hint) return;
@@ -431,9 +860,12 @@
             }
 
             async function stopTry() {
+                PD.stop();
+                currentFrame = null;
                 if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
                 video.srcObject = null;
                 video.hidden = false;
+                video.classList.remove('is-mirrored');
                 overlay.hidden = true;
                 if (preview) {
                     preview.hidden = true;
@@ -475,18 +907,51 @@
                         absEffect = new URL(absEffect, window.location.origin).href;
                     }
 
-                    deepARInstance = await api.initialize({
-                        licenseKey: deeparLicenseKey,
-                        previewElement: preview,
-                        effect: absEffect,
-                        rootPath: deeparRootPath,
-                        additionalOptions: {
-                            cameraConfig: {
-                                facingMode: 'user'
-                            }
+                    // One camera for both: we own the stream, DeepAR renders from our <video>,
+                    // and the PD meter reads the same frames. Falls back to DeepAR's camera.
+                    var sharedCam = false;
+                    if (PD.enabled) {
+                        try {
+                            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                            video.srcObject = stream;
+                            video.hidden = false; // kept under the DeepAR canvas (z-index) so it keeps decoding
+                            await video.play().catch(function () {});
+                            sharedCam = true;
+                        } catch (camErr) {
+                            console.warn('Shared camera unavailable, DeepAR will open its own', camErr);
+                            stream = null;
                         }
-                    });
+                    }
+
+                    var buildOptions = function (useOwnVideo) {
+                        return {
+                            licenseKey: deeparLicenseKey,
+                            previewElement: preview,
+                            effect: absEffect,
+                            rootPath: deeparRootPath,
+                            additionalOptions: {
+                                cameraConfig: useOwnVideo
+                                    ? { disableDefaultCamera: true }
+                                    : { facingMode: 'user' }
+                            }
+                        };
+                    };
+
+                    deepARInstance = await api.initialize(buildOptions(sharedCam));
+
+                    if (sharedCam) {
+                        if (typeof deepARInstance.setVideoElement === 'function') {
+                            deepARInstance.setVideoElement(video, true);
+                        } else {
+                            // Older SDK: let DeepAR run its own camera; PD keeps our stream.
+                            try { await deepARInstance.shutdown(); } catch (e) {}
+                            deepARInstance = await api.initialize(buildOptions(false));
+                        }
+                    }
+
                     setHint('');
+                    // PD meter: shared <video> when we own the camera, else its own stream
+                    startPdFor(sharedCam ? video : null);
                     return { ok: true };
                 } catch (err) {
                     console.warn('DeepAR failed', err);
@@ -498,6 +963,13 @@
                     preview.hidden = true;
                     preview.innerHTML = '';
                     video.hidden = false;
+                    // Release the shared camera so the fallback can open its own cleanly
+                    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+                    video.srcObject = null;
+                    if (deepARInstance && typeof deepARInstance.shutdown === 'function') {
+                        try { await deepARInstance.shutdown(); } catch (e) {}
+                        deepARInstance = null;
+                    }
                     return { ok: false, reason: reason };
                 }
             }
@@ -518,6 +990,9 @@
                     }
                     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
                     video.srcObject = stream;
+                    video.classList.add('is-mirrored');
+                    await video.play().catch(function () {});
+                    startPdFor(video);
                 } catch (err) {
                     fallback.hidden = false;
                     if (!message) {
@@ -535,6 +1010,8 @@
                     var name = btn.dataset.name || '';
                     var image = btn.dataset.image || '';
                     var effect = (btn.dataset.effect || '').trim();
+                    var pid = btn.dataset.productId || '';
+                    currentFrame = frames[String(pid)] || frames[pid] || null;
                     if (deeparReady && effect) {
                         var result = await openDeepARTryOn(effect, name);
                         if (result.ok) return;
