@@ -499,6 +499,8 @@
                 var ownStream = null;       // when PD had to open its own camera
                 var ownVideo = null;
                 var onLocked = null;
+                var onState = null;         // 'measuring' | 'locked' | 'hidden' → host shows/hides the glasses
+                function emit(state) { if (onState) { try { onState(state); } catch (e) {} } }
 
                 var layer = document.getElementById('pd-layer');
                 var guide = document.getElementById('pd-guide');
@@ -683,15 +685,17 @@
                     guide.classList.add('is-off');
                     coach('');
                     actionsEl.hidden = !visible;
+                    emit('locked');
                 }
 
                 function paintMeasuring() {
                     pill.classList.remove('is-locked');
                     pillValue.textContent = '…';
                     guide.classList.remove('is-off', 'is-good');
-                    coach('Face the camera straight, about 40 cm (16 in) away. Eyes on the line.');
+                    coach('Glasses hidden while measuring. Face the camera straight, about 40 cm (16 in) away.');
                     actionsEl.hidden = true;
                     verdictEl.hidden = true;
+                    emit('measuring');
                 }
 
                 function startLoop() {
@@ -728,6 +732,7 @@
                         verdictEl.hidden = true;
                         actionsEl.hidden = true;
                         stopLoop();
+                        emit('hidden'); // user wants to see the glasses
                     } else {
                         if (result) { paintLocked(); if (onLocked) onLocked(result); }
                         else { paintMeasuring(); startLoop(); }
@@ -750,10 +755,12 @@
                  * Start the PD meter.
                  * @param {HTMLVideoElement|null} videoEl  shared camera element, or null to open our own
                  * @param {Function} lockedCb               called with {pd} when a reading is ready (or restored)
+                 * @param {Function} stateCb                called with 'measuring' | 'locked' | 'hidden'
                  */
-                async function start(videoEl, lockedCb) {
+                async function start(videoEl, lockedCb, stateCb) {
                     if (!enabled) return false;
                     onLocked = lockedCb || null;
+                    onState = stateCb || null;
                     toggleBtn.hidden = false;
                     visible = true;
                     samples = [];
@@ -779,6 +786,7 @@
                     closeOwnCamera();
                     source = null;
                     onLocked = null;
+                    onState = null;
                     samples = [];
                     layer.hidden = true;
                     toggleBtn.hidden = true;
@@ -818,12 +826,49 @@
                     }
                 }
 
-                return { enabled: enabled, start: start, stop: stop, renderVerdict: renderVerdict };
+                return {
+                    enabled: enabled,
+                    start: start,
+                    stop: stop,
+                    renderVerdict: renderVerdict,
+                    hasStored: function () { return restore() !== null; },
+                    /** True when the try-on should open with the glasses hidden (a measurement is about to run). */
+                    willMeasure: function () { return enabled && restore() === null; }
+                };
             })();
 
+            // ---- Glasses visibility: hidden while PD is measuring so the eyes stay clear ----
+            var currentEffectUrl = '';
+            var glassesShown = true;
+            var glassesQueue = Promise.resolve();
+
+            function setGlasses(show) {
+                if (glassesShown === show) return;
+                glassesShown = show;
+                glassesQueue = glassesQueue.then(async function () {
+                    if (deepARInstance) {
+                        try {
+                            if (show) {
+                                if (currentEffectUrl) await deepARInstance.switchEffect(currentEffectUrl);
+                            } else if (typeof deepARInstance.clearEffect === 'function') {
+                                deepARInstance.clearEffect();
+                            }
+                        } catch (e) { console.warn('DeepAR effect toggle failed', e); }
+                    } else {
+                        overlay.hidden = show ? !overlay.getAttribute('src') : true;
+                    }
+                }).catch(function () {});
+            }
+
             function startPdFor(videoEl) {
-                if (!PD.enabled) return;
-                PD.start(videoEl, function () { PD.renderVerdict(currentFrame); }).catch(function () {});
+                if (!PD.enabled) { setGlasses(true); return; }
+                PD.start(
+                    videoEl,
+                    function () { PD.renderVerdict(currentFrame); },
+                    function (state) { setGlasses(state !== 'measuring'); }
+                ).then(function (ok) {
+                    if (!ok) setGlasses(true); // PD meter unavailable → just show the glasses
+                }).catch(function () { setGlasses(true); });
             }
 
             function setHint(msg) {
@@ -862,6 +907,9 @@
             async function stopTry() {
                 PD.stop();
                 currentFrame = null;
+                currentEffectUrl = '';
+                glassesShown = true;
+                glassesQueue = Promise.resolve();
                 if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
                 video.srcObject = null;
                 video.hidden = false;
@@ -923,11 +971,16 @@
                         }
                     }
 
+                    // Start with NO glasses when the PD meter is about to measure; the effect is
+                    // switched in once the reading locks (or the user hides the PD overlay).
+                    currentEffectUrl = absEffect;
+                    glassesShown = !PD.willMeasure();
+
                     var buildOptions = function (useOwnVideo) {
                         return {
                             licenseKey: deeparLicenseKey,
                             previewElement: preview,
-                            effect: absEffect,
+                            effect: glassesShown ? absEffect : undefined,
                             rootPath: deeparRootPath,
                             additionalOptions: {
                                 cameraConfig: useOwnVideo
@@ -980,7 +1033,8 @@
                 preview.innerHTML = '';
                 video.hidden = false;
                 overlay.src = imageUrl || '';
-                overlay.hidden = !imageUrl;
+                glassesShown = !PD.willMeasure();
+                overlay.hidden = !imageUrl || !glassesShown;
                 fallback.hidden = true;
                 setHint(message || (deeparReady ? '' : 'DeepAR is not configured. Add DEEPAR_LICENSE_KEY to .env.') || '');
                 modal.hidden = false;
@@ -999,6 +1053,7 @@
                         setHint('Camera blocked.' + cameraSecureHint());
                     }
                     if (imageUrl) {
+                        glassesShown = true; // no camera → no PD, just show the frame picture
                         overlay.style.inset = '0'; overlay.style.width = '100%';
                         overlay.style.objectFit = 'contain'; overlay.hidden = false;
                     }
