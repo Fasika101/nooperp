@@ -134,9 +134,10 @@
                 <strong id="try-title">Try on</strong>
                 <div class="try-top-actions">
                     <button type="button" class="btn btn-ghost btn-sm" id="pd-toggle" hidden aria-pressed="true">Hide PD</button>
-                    <button type="button" class="btn btn-ghost btn-sm" id="try-close">Close</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="try-close" style="position:relative;z-index:70;pointer-events:auto;">Close</button>
                 </div>
             </div>
+            <div id="try-banner" class="try-banner" hidden></div>
             <div class="try-stage" id="try-stage">
                 <div id="deepar-preview" class="deepar-preview" hidden></div>
                 <video id="try-video" playsinline muted autoplay></video>
@@ -144,28 +145,23 @@
                 {{-- PD meter overlay: face guide + live reading. Toggle with "Hide PD". --}}
                 <div id="pd-layer" class="pd-layer" hidden aria-live="polite">
                     <div class="pd-guide" id="pd-guide">
-                        <div class="pd-guide-oval"></div>
+                        {{-- Face ID-style guide: soft mask, tick ring (built by JS), live iris trackers, one big cue --}}
+                        <div class="pd-mask"></div>
+                        <svg class="pd-ring" id="pd-ring" viewBox="0 0 300 400" preserveAspectRatio="none" aria-hidden="true"></svg>
                         <div class="pd-guide-eyes"></div>
-                        {{-- live iris trackers, positioned by the scanner each frame --}}
                         <span class="pd-eye" id="pd-eye-r" hidden></span>
                         <span class="pd-eye" id="pd-eye-l" hidden></span>
-                        <div class="pd-arrow pd-arrow-left" id="pd-arrow-left" hidden aria-hidden="true">
-                            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
-                        </div>
-                        <div class="pd-arrow pd-arrow-right" id="pd-arrow-right" hidden aria-hidden="true">
-                            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+                        <div class="pd-cue" id="pd-cue" hidden>
+                            <span class="pd-cue-icon" id="pd-cue-icon" aria-hidden="true"></span>
+                            <span class="pd-cue-text" id="pd-cue-text"></span>
                         </div>
                     </div>
                     <div class="pd-pill" id="pd-pill">
                         <span class="pd-pill-label">PD</span>
                         <span class="pd-pill-value" id="pd-pill-value">—</span>
                     </div>
-                    <div class="pd-steps" id="pd-steps"></div>
+                    <div class="pd-dots" id="pd-dots" aria-hidden="true"><i></i><i></i><i></i></div>
                     <button type="button" class="pd-skip" id="pd-skip" hidden>Skip turns</button>
-                    <div class="pd-coach-wrap">
-                        <div class="pd-progress-track"><div class="pd-progress" id="pd-progress"></div></div>
-                        <div class="pd-coach" id="pd-coach">Face the camera straight, about 40 cm (16 in) away.</div>
-                    </div>
                 </div>
                 <p id="try-fallback" class="page-sub" hidden>Camera not available. Showing frame preview.</p>
             </div>
@@ -304,9 +300,16 @@
             bottom: auto; right: auto; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.35));
         }
         #try-fallback { position:absolute; inset:auto 1rem 1rem; color:#fff; z-index: 3; }
+        .try-banner {
+            margin: 0 0 0.6rem; padding: 0.55rem 0.8rem; border-radius: 0.75rem; text-align:center;
+            background: #fff7ed; color: #7c2d12; border: 1px solid #fed7aa; font-size: 0.8rem; font-weight: 600; line-height: 1.3;
+        }
+        .try-banner[hidden] { display:none !important; }
+        .try-banner.is-error { background:#fef2f2; color:#7f1d1d; border-color:#fecaca; }
+        .try-banner.is-info { background:#eff6ff; color:#1e3a8a; border-color:#bfdbfe; }
         #pick-form { margin-top: 1rem; }
-        .try-top-actions { display:flex; gap:0.4rem; align-items:center; }
-        .try-top-actions .btn { width:auto; }
+        .try-top-actions { display:flex; gap:0.4rem; align-items:center; position:relative; z-index:70; }
+        .try-top-actions .btn { width:auto; pointer-events:auto; }
         /* Selfie-style mirror for the plain camera preview (DeepAR mirrors itself) */
         #try-video.is-mirrored { transform: scaleX(-1); }
 
@@ -315,22 +318,76 @@
         .pd-layer[hidden] { display:none !important; }
         .pd-guide { position:absolute; inset:0; transition: opacity 0.25s ease; }
         .pd-guide.is-off { opacity:0; }
-        .pd-guide-oval {
-            position:absolute; left:50%; top:46%; width:62%; aspect-ratio: 3 / 4;
-            transform: translate(-50%, -50%);
-            border: 2px dashed rgba(255,255,255,0.85); border-radius: 50% / 46%;
-            box-shadow: 0 0 0 9999px rgba(15,23,42,0.28);
+        /* soft vignette around the face area (no hard border — the tick ring is the guide) */
+        .pd-mask {
+            position:absolute; left:50%; top:46%; width:64%; aspect-ratio: 3 / 4;
+            transform: translate(-50%, -50%); border-radius: 50%;
+            box-shadow: 0 0 0 9999px rgba(15,23,42,0.22), inset 0 0 40px rgba(15,23,42,0.15);
+            transition: transform 0.6s cubic-bezier(.2,.8,.2,1);
         }
-        .pd-guide.is-good .pd-guide-oval { border-color: #4ade80; border-style: solid; }
+        /* Face ID-style tick ring, built by JS (44 lines) */
+        .pd-ring { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+        .pd-ring line {
+            stroke: rgba(255,255,255,0.32); stroke-width: 3.2; stroke-linecap: round;
+            transition: stroke 0.18s ease, stroke-width 0.18s ease, opacity 0.18s ease;
+        }
+        .pd-ring line.is-on { stroke: #4ade80; stroke-width: 3.8; }
+        .pd-ring line.is-hint { animation: pdTick 1.1s ease-in-out infinite; }
+        .pd-ring[data-mode="front"] line.is-on { stroke: #fff; }
+        .pd-guide.is-good .pd-ring[data-mode="front"] line.is-on { stroke: #4ade80; }
+        .pd-ring[data-mode="done"] line { stroke:#4ade80; animation: pdDone 0.5s ease both; }
+        @keyframes pdTick { 0%,100% { stroke: rgba(255,255,255,0.32); } 50% { stroke: rgba(255,255,255,1); stroke-width: 4.2; } }
+        @keyframes pdDone { from { stroke-width: 3; opacity: 0.6; } 50% { stroke-width: 6; opacity: 1; } to { stroke-width: 3.8; } }
+        /* eye-level line */
         .pd-guide-eyes {
-            position:absolute; left:50%; top:38%; width:62%; transform: translateX(-50%);
-            display:flex; justify-content:center; gap: 18%;
+            position:absolute; left:50%; top:38%; width:46%; height:1px; transform: translateX(-50%);
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55) 20%, rgba(255,255,255,0.55) 80%, transparent);
         }
-        .pd-guide-eyes::before {
-            content:""; position:absolute; left:8%; right:8%; top:50%; height:1px;
-            background: rgba(255,255,255,0.55);
+        /* one big cue, centred under the face */
+        .pd-cue {
+            position:absolute; left:50%; top:82%; transform: translate(-50%, -50%);
+            display:flex; align-items:center; gap:0.55rem; color:#fff; white-space:nowrap;
+            font-size: clamp(1rem, 4.5vw, 1.25rem); font-weight: 800; letter-spacing: -0.01em;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.65), 0 0 2px rgba(0,0,0,0.9);
         }
-        .pd-guide-eyes { height: 1.6rem; }
+        .pd-cue[hidden] { display:none !important; }
+        .pd-cue.is-in { animation: pdCueIn 0.32s cubic-bezier(.2,.8,.2,1) both; }
+        @keyframes pdCueIn { from { opacity:0; transform: translate(-50%, -50%) translateY(8px) scale(0.96); } to { opacity:1; transform: translate(-50%, -50%); } }
+        .pd-cue-icon { display:inline-flex; width: 2.6rem; height: 1.3rem; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6)); }
+        .pd-cue-icon svg { width:100%; height:100%; fill:none; stroke:#fff; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; overflow:visible; }
+        .pd-cue-icon:empty { display:none; }
+        /* glyph motion per cue */
+        .pd-cue[data-anim="chase"] .pd-cue-icon svg path { animation: pdChase 0.9s ease-in-out infinite; }
+        .pd-cue[data-anim="chase"] .pd-cue-icon svg path:nth-child(2) { animation-delay: 0.15s; }
+        .pd-cue[data-anim="chase"] .pd-cue-icon svg path:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes pdChase { 0%,100% { opacity:0.25; } 40% { opacity:1; } }
+        .pd-cue[data-anim="pulse-in"] .pd-cue-icon { animation: pdIn 0.9s ease-in-out infinite alternate; }
+        .pd-cue[data-anim="pulse-out"] .pd-cue-icon { animation: pdIn 0.9s ease-in-out infinite alternate-reverse; }
+        @keyframes pdIn { from { transform: scale(1.12); opacity:0.7; } to { transform: scale(0.92); opacity:1; } }
+        .pd-cue[data-anim="pulse"] .pd-cue-icon { animation: pdPulse 1.1s ease-in-out infinite; }
+        @keyframes pdPulse { 0%,100% { opacity:0.65; } 50% { opacity:1; } }
+        .pd-cue[data-anim="breathe"] .pd-cue-icon { animation: pdBreathe 1.6s ease-in-out infinite; }
+        @keyframes pdBreathe { 0%,100% { transform: scale(1); opacity:0.75; } 50% { transform: scale(1.1); opacity:1; } }
+        .pd-cue[data-anim="tilt"] .pd-cue-icon { animation: pdTilt 1.2s ease-in-out infinite alternate; }
+        @keyframes pdTilt { from { transform: rotate(-10deg); } to { transform: rotate(10deg); } }
+        .pd-cue[data-anim="spin"] .pd-cue-icon { animation: pdSpin 1s linear infinite; }
+        @keyframes pdSpin { to { transform: rotate(360deg); } }
+        .pd-cue[data-anim="pop"] { color:#4ade80; }
+        .pd-cue[data-anim="pop"] .pd-cue-icon svg { stroke:#4ade80; }
+        .pd-cue[data-anim="pop"] .pd-cue-icon svg path { stroke-dasharray: 40; stroke-dashoffset: 40; animation: pdDraw 0.45s 0.1s ease-out forwards; }
+        @keyframes pdDraw { to { stroke-dashoffset: 0; } }
+        /* three step dots (top right) */
+        .pd-dots { position:absolute; right:0.8rem; top:0.95rem; display:flex; gap:0.35rem; }
+        .pd-dots i {
+            width: 0.5rem; height: 0.5rem; border-radius: 999px; background: rgba(255,255,255,0.35);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4); transition: background 0.25s ease, transform 0.25s ease;
+        }
+        .pd-dots i.is-now { background:#fff; transform: scale(1.25); }
+        .pd-dots i.is-done { background:#4ade80; }
+        .pd-guide.is-off ~ .pd-dots { opacity:0; transition: opacity 0.25s ease; }
+        @media (prefers-reduced-motion: reduce) {
+            .pd-ring line, .pd-cue-icon, .pd-cue-icon svg path, .pd-cue, .pd-mask { animation: none !important; transition: none !important; }
+        }
         .pd-eye {
             position:absolute; left:0; top:0; width: 1.6rem; height: 1.6rem; border-radius:50%;
             border: 2px solid rgba(255,255,255,0.95); box-shadow: 0 0 0 2px rgba(15,23,42,0.35);
@@ -353,34 +410,10 @@
         .pd-pill-label { font-size:0.65rem; letter-spacing:0.08em; text-transform:uppercase; opacity:0.8; }
         .pd-pill.is-locked { background: rgba(22,101,52,0.85); border-color: rgba(134,239,172,0.6); }
         .pd-pill.is-locked .pd-pill-value::after { content:" ✓"; }
-        .pd-coach-wrap { position:absolute; left:0.65rem; right:0.65rem; bottom:0.65rem; display:flex; flex-direction:column; gap:0.35rem; }
-        .pd-coach {
-            text-align:center;
-            background: rgba(15,23,42,0.72); color:#fff; backdrop-filter: blur(6px);
-            padding: 0.5rem 0.75rem; border-radius: 0.75rem; font-size:0.8rem; font-weight:600; line-height:1.3;
-        }
-        .pd-coach:empty { display:none; }
-        .pd-progress-track { height: 4px; border-radius: 999px; background: rgba(255,255,255,0.25); overflow:hidden; }
-        .pd-progress { height:100%; width:0; background:#4ade80; transition: width 0.15s linear; }
-        .pd-steps {
-            position:absolute; right:0.65rem; top:0.65rem; background: rgba(15,23,42,0.72); color:#fff;
-            padding: 0.35rem 0.6rem; border-radius: 999px; font-size:0.7rem; font-weight:700; letter-spacing:0.02em;
-            backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.2);
-        }
-        .pd-steps:empty { display:none; }
-        .pd-arrow {
-            position:absolute; top:44%; transform: translateY(-50%); color:#fff;
-            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5)); animation: pdNudge 0.9s ease-in-out infinite alternate;
-        }
-        .pd-arrow[hidden] { display:none !important; }
-        .pd-arrow-left { left: 4%; }
-        .pd-arrow-right { right: 4%; --dir: 1; }
-        .pd-arrow-left { --dir: -1; }
-        @keyframes pdNudge { from { translate: 0 0; } to { translate: calc(var(--dir, 1) * 8px) 0; } }
         .pd-skip {
-            position:absolute; right:0.65rem; top:2.9rem; pointer-events:auto;
-            background: rgba(255,255,255,0.92); color: var(--ink); border: 0; border-radius: 999px;
-            padding: 0.35rem 0.7rem; font: inherit; font-size:0.72rem; font-weight:700; cursor:pointer;
+            position:absolute; right:0.65rem; bottom:0.65rem; pointer-events:auto;
+            background: rgba(15,23,42,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 999px;
+            padding: 0.35rem 0.7rem; font: inherit; font-size:0.72rem; font-weight:700; cursor:pointer; backdrop-filter: blur(6px);
         }
         .pd-skip[hidden] { display:none !important; }
         .pd-results {
@@ -567,15 +600,15 @@
                 layer: document.getElementById('pd-layer'),
                 stage: document.getElementById('try-stage'),
                 guide: document.getElementById('pd-guide'),
+                ring: document.getElementById('pd-ring'),
                 eyeR: document.getElementById('pd-eye-r'),
                 eyeL: document.getElementById('pd-eye-l'),
+                cue: document.getElementById('pd-cue'),
+                cueIcon: document.getElementById('pd-cue-icon'),
+                cueText: document.getElementById('pd-cue-text'),
+                dots: document.getElementById('pd-dots'),
                 pill: document.getElementById('pd-pill'),
                 pillValue: document.getElementById('pd-pill-value'),
-                coach: document.getElementById('pd-coach'),
-                steps: document.getElementById('pd-steps'),
-                arrowLeft: document.getElementById('pd-arrow-left'),
-                arrowRight: document.getElementById('pd-arrow-right'),
-                progress: document.getElementById('pd-progress'),
                 skip: document.getElementById('pd-skip'),
                 toggle: document.getElementById('pd-toggle'),
                 verdict: document.getElementById('pd-verdict'),
@@ -637,15 +670,47 @@
                 }).catch(function () {});
             }
 
-            function startPdFor(videoEl) {
-                if (!PD.enabled) { setGlasses(true); return; }
+            var pendingEffectUrl = ''; // .deepar waiting until PD locks (avoids dual-camera hang)
+            var deeparStarting = false;
+
+            function startPdFor(videoEl, onLockedExtra) {
+                if (!PD.enabled) {
+                    setGlasses(true);
+                    if (onLockedExtra) onLockedExtra();
+                    return;
+                }
                 PD.start(
                     videoEl,
-                    function () { PD.renderVerdict(currentFrame); },
+                    function () {
+                        PD.renderVerdict(currentFrame);
+                        if (onLockedExtra) onLockedExtra();
+                    },
                     function (state) { setGlasses(state !== 'measuring'); }
                 ).then(function (ok) {
-                    if (!ok) setGlasses(true); // PD meter unavailable → just show the glasses
-                }).catch(function () { setGlasses(true); });
+                    if (!ok) {
+                        setGlasses(true);
+                        if (onLockedExtra) onLockedExtra();
+                    }
+                }).catch(function () {
+                    setGlasses(true);
+                    if (onLockedExtra) onLockedExtra();
+                });
+            }
+
+            /** After PD is done (or skipped), bring DeepAR up so it isn't fighting the camera mid-scan. */
+            function launchPendingDeepAR(session) {
+                if (!pendingEffectUrl || deeparStarting || deepARInstance) return;
+                if (session !== trySession) return;
+                var effect = pendingEffectUrl;
+                pendingEffectUrl = '';
+                deeparStarting = true;
+                startDeepARInBackground(effect, session).then(function (result) {
+                    deeparStarting = false;
+                    if (session !== trySession || !result || result.closed) return;
+                    if (!result.ok) {
+                        setBanner('No try-on loaded — PD scan only. ' + (result.reason || ''), 'error');
+                    }
+                }).catch(function () { deeparStarting = false; });
             }
 
             function setHint(msg) {
@@ -681,159 +746,203 @@
                 return null;
             }
 
-            async function stopTry() {
-                PD.stop();
+            // Every open gets a session id; async steps bail out when the user closed in the meantime.
+            var trySession = 0;
+            var banner = document.getElementById('try-banner');
+
+            function setBanner(msg, kind) {
+                if (!banner) return;
+                banner.hidden = !msg;
+                banner.textContent = msg || '';
+                banner.classList.toggle('is-error', kind === 'error');
+                banner.classList.toggle('is-info', kind === 'info' || (!kind && !!msg));
+            }
+
+            function withTimeout(promise, ms, label) {
+                return new Promise(function (resolve, reject) {
+                    var t = setTimeout(function () {
+                        reject(new Error((label || 'Operation') + ' timed out after ' + Math.round(ms / 1000) + 's'));
+                    }, ms);
+                    promise.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+                });
+            }
+
+            function releaseCamera() {
+                if (stream) { try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} stream = null; }
+                try { video.srcObject = null; } catch (e) {}
+            }
+
+            async function shutdownDeepAR(instance) {
+                if (!instance || typeof instance.shutdown !== 'function') return;
+                try { await withTimeout(Promise.resolve(instance.shutdown()), 2500, 'DeepAR shutdown'); } catch (e) {}
+            }
+
+            /**
+             * Always closes the UI immediately. Never awaits DeepAR / camera — those clean up
+             * in the background so Close can never get stuck on "Starting…".
+             */
+            function stopTry() {
+                trySession++;
+                modal.hidden = true;
+                try { PD.stop(); } catch (e) {}
                 currentFrame = null;
                 currentEffectUrl = '';
+                pendingEffectUrl = '';
+                deeparStarting = false;
                 glassesShown = true;
                 glassesQueue = Promise.resolve();
-                if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-                video.srcObject = null;
-                video.hidden = false;
-                video.classList.remove('is-mirrored');
-                overlay.hidden = true;
-                if (preview) {
-                    preview.hidden = true;
-                    preview.innerHTML = '';
-                }
-                setHint('');
-                if (deepARInstance && typeof deepARInstance.shutdown === 'function') {
-                    try { await deepARInstance.shutdown(); } catch (e) {}
-                    deepARInstance = null;
-                }
-                modal.hidden = true;
-            }
-            document.getElementById('try-close').addEventListener('click', function () { stopTry(); });
-            modal.addEventListener('click', function (e) { if (e.target === modal) stopTry(); });
-
-            async function openDeepARTryOn(effectUrl, name) {
-                if (!deeparReady || !deeparLicenseKey || !effectUrl) {
-                    return { ok: false, reason: !effectUrl ? 'No effect file on this product.' : 'DeepAR license missing.' };
-                }
-
-                document.getElementById('try-title').textContent = 'Try · ' + (name || '');
-                video.hidden = true;
-                overlay.hidden = true;
-                fallback.hidden = true;
-                preview.hidden = false;
-                preview.innerHTML = '';
-                setHint('Starting virtual try-on…');
-                modal.hidden = false;
-
-                var api = await waitForDeepAR(8000);
-                if (!api) {
-                    return { ok: false, reason: 'DeepAR SDK did not load. Check network / CDN.' };
-                }
-
+                releaseCamera();
                 try {
-                    // Absolute effect URL + rootPath for WASM/models
-                    var absEffect = effectUrl;
-                    if (absEffect.indexOf('http') !== 0) {
-                        absEffect = new URL(absEffect, window.location.origin).href;
-                    }
-
-                    // One camera for both: we own the stream, DeepAR renders from our <video>,
-                    // and the PD meter reads the same frames. Falls back to DeepAR's camera.
-                    var sharedCam = false;
-                    if (PD.enabled) {
-                        try {
-                            stream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
-                            video.srcObject = stream;
-                            video.hidden = false; // kept under the DeepAR canvas (z-index) so it keeps decoding
-                            await video.play().catch(function () {});
-                            sharedCam = true;
-                        } catch (camErr) {
-                            console.warn('Shared camera unavailable, DeepAR will open its own', camErr);
-                            stream = null;
-                        }
-                    }
-
-                    // Start with NO glasses when the PD meter is about to measure; the effect is
-                    // switched in once the reading locks (or the user hides the PD overlay).
-                    currentEffectUrl = absEffect;
-                    glassesShown = !PD.willMeasure();
-
-                    var buildOptions = function (useOwnVideo) {
-                        return {
-                            licenseKey: deeparLicenseKey,
-                            previewElement: preview,
-                            effect: glassesShown ? absEffect : undefined,
-                            rootPath: deeparRootPath,
-                            additionalOptions: {
-                                cameraConfig: useOwnVideo
-                                    ? { disableDefaultCamera: true }
-                                    : { facingMode: 'user' }
-                            }
-                        };
-                    };
-
-                    deepARInstance = await api.initialize(buildOptions(sharedCam));
-
-                    if (sharedCam) {
-                        if (typeof deepARInstance.setVideoElement === 'function') {
-                            deepARInstance.setVideoElement(video, true);
-                        } else {
-                            // Older SDK: let DeepAR run its own camera; PD keeps our stream.
-                            try { await deepARInstance.shutdown(); } catch (e) {}
-                            deepARInstance = await api.initialize(buildOptions(false));
-                        }
-                    }
-
-                    setHint('');
-                    // PD meter: shared <video> when we own the camera, else its own stream
-                    startPdFor(sharedCam ? video : null);
-                    return { ok: true };
-                } catch (err) {
-                    console.warn('DeepAR failed', err);
-                    var reason = errText(err) + cameraSecureHint();
-                    // Common license mistake: domain not registered as liba_noop.test
-                    if (/license|domain|app key|unauthorized|forbidden/i.test(reason)) {
-                        reason += ' In DeepAR portal, add domain “' + location.hostname + '” (no https://).';
-                    }
-                    preview.hidden = true;
-                    preview.innerHTML = '';
                     video.hidden = false;
-                    // Release the shared camera so the fallback can open its own cleanly
-                    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-                    video.srcObject = null;
-                    if (deepARInstance && typeof deepARInstance.shutdown === 'function') {
-                        try { await deepARInstance.shutdown(); } catch (e) {}
-                        deepARInstance = null;
-                    }
-                    return { ok: false, reason: reason };
-                }
+                    video.classList.remove('is-mirrored');
+                    overlay.hidden = true;
+                    overlay.removeAttribute('src');
+                    fallback.hidden = true;
+                    if (preview) { preview.hidden = true; preview.innerHTML = ''; }
+                } catch (e) {}
+                setHint('');
+                setBanner('');
+                var instance = deepARInstance;
+                deepARInstance = null;
+                shutdownDeepAR(instance); // fire-and-forget
+            }
+            document.getElementById('try-close').addEventListener('click', function (e) {
+                e.preventDefault(); e.stopPropagation(); stopTry();
+            });
+            modal.addEventListener('click', function (e) { if (e.target === modal) stopTry(); });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !modal.hidden) stopTry();
+            });
+
+            var DEEPAR_INIT_TIMEOUT = 10000;
+
+            function absUrl(url) {
+                if (!url) return '';
+                return url.indexOf('http') === 0 ? url : new URL(url, window.location.origin).href;
             }
 
-            async function openFallbackTryOn(name, imageUrl, message) {
+            /**
+             * Open the modal with our camera + PD first (never blocks on DeepAR).
+             * Frame product photo is NEVER used as a fake try-on — only if the camera is blocked.
+             */
+            async function openCameraAndPd(name, imageUrl, bannerMsg, bannerKind, session, onLockedExtra) {
+                var alive = function () { return session === trySession; };
                 document.getElementById('try-title').textContent = 'Try · ' + (name || '');
                 preview.hidden = true;
                 preview.innerHTML = '';
                 video.hidden = false;
-                overlay.src = imageUrl || '';
-                glassesShown = !PD.willMeasure();
-                overlay.hidden = !imageUrl || !glassesShown;
+                overlay.hidden = true;
+                overlay.removeAttribute('src');
                 fallback.hidden = true;
-                setHint(message || (deeparReady ? '' : 'DeepAR is not configured. Add DEEPAR_LICENSE_KEY to .env.') || '');
+                glassesShown = true;
+                setHint('');
+                setBanner(bannerMsg || '', bannerKind || (bannerMsg ? 'info' : ''));
                 modal.hidden = false;
+
                 try {
                     if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
                         throw new Error('insecure');
                     }
-                    stream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+                    stream = await withTimeout(navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS), 10000, 'Camera');
+                    if (!alive()) { releaseCamera(); return false; }
                     video.srcObject = stream;
                     video.classList.add('is-mirrored');
                     await video.play().catch(function () {});
-                    startPdFor(video);
+                    if (!PD.enabled) setHint('PD scan is not available on this device/browser.');
+                    startPdFor(video, onLockedExtra);
+                    return true;
                 } catch (err) {
+                    if (!alive()) return false;
                     fallback.hidden = false;
-                    if (!message) {
-                        setHint('Camera blocked.' + cameraSecureHint());
-                    }
+                    setHint('Camera blocked.' + cameraSecureHint());
+                    // Last resort only: show the product photo when there is no camera at all
                     if (imageUrl) {
-                        glassesShown = true; // no camera → no PD, just show the frame picture
+                        overlay.src = imageUrl;
                         overlay.style.inset = '0'; overlay.style.width = '100%';
                         overlay.style.objectFit = 'contain'; overlay.hidden = false;
                     }
+                    return false;
+                }
+            }
+
+            /**
+             * Start DeepAR with a hard timeout. Call only when the PD scan is done (or skipped)
+             * so DeepAR isn't fighting our camera mid-scan — that dual-camera fight is what
+             * used to freeze the modal on "Starting virtual try-on…".
+             */
+            async function startDeepARInBackground(effectUrl, session) {
+                if (!deeparReady || !deeparLicenseKey || !effectUrl) {
+                    return { ok: false, reason: !effectUrl ? 'No try-on file for this frame.' : 'DeepAR license missing.' };
+                }
+                var alive = function () { return session === trySession; };
+                var absEffect = absUrl(effectUrl);
+                currentEffectUrl = absEffect;
+
+                setHint('Starting virtual try-on…');
+                var api = await waitForDeepAR(6000);
+                if (!alive()) return { ok: false, closed: true };
+                if (!api) {
+                    setHint('');
+                    return { ok: false, reason: 'DeepAR SDK did not load. Check network / CDN.' };
+                }
+
+                // Free our camera so DeepAR can take it. PD is already locked by this point.
+                try { PD.stop(); } catch (e) {}
+                releaseCamera();
+                video.hidden = true;
+                video.classList.remove('is-mirrored');
+
+                var instance = null;
+                try {
+                    glassesShown = true;
+                    instance = await withTimeout(api.initialize({
+                        licenseKey: deeparLicenseKey,
+                        previewElement: preview,
+                        effect: absEffect,
+                        rootPath: deeparRootPath,
+                        additionalOptions: { cameraConfig: { facingMode: 'user' } }
+                    }), DEEPAR_INIT_TIMEOUT, 'DeepAR start');
+                    if (!alive()) { shutdownDeepAR(instance); return { ok: false, closed: true }; }
+
+                    deepARInstance = instance;
+                    preview.hidden = false;
+                    setHint('');
+                    // Re-show the locked PD results / verdict over the try-on (no re-scan)
+                    try {
+                        if (PD.enabled) {
+                            PD.start(null, function () { PD.renderVerdict(currentFrame); }, null);
+                        }
+                    } catch (e) {}
+                    return { ok: true };
+                } catch (err) {
+                    console.warn('DeepAR failed', err);
+                    var reason = errText(err) + cameraSecureHint();
+                    if (/license|domain|app key|unauthorized|forbidden/i.test(reason)) {
+                        reason += ' In DeepAR portal, add domain “' + location.hostname + '” (no https://).';
+                    }
+                    if (/currently being initialized/i.test(reason)) {
+                        reason = 'A previous try-on is still closing. Tap Close, wait a second, then Try again.';
+                    }
+                    shutdownDeepAR(instance);
+                    if (deepARInstance === instance) deepARInstance = null;
+                    if (!alive()) return { ok: false, closed: true };
+                    preview.hidden = true;
+                    preview.innerHTML = '';
+                    video.hidden = false;
+                    setHint('');
+                    // Give the camera back to the PD view so the user isn't left on a black stage
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+                        if (alive()) {
+                            video.srcObject = stream;
+                            video.classList.add('is-mirrored');
+                            await video.play().catch(function () {});
+                            startPdFor(video);
+                        } else {
+                            releaseCamera();
+                        }
+                    } catch (e) {}
+                    return { ok: false, reason: reason };
                 }
             }
 
@@ -843,17 +952,41 @@
                     var image = btn.dataset.image || '';
                     var effect = (btn.dataset.effect || '').trim();
                     var pid = btn.dataset.productId || '';
+                    if (!modal.hidden) stopTry();
+                    var session = ++trySession;
                     currentFrame = frames[String(pid)] || frames[pid] || null;
-                    if (deeparReady && effect) {
-                        var result = await openDeepARTryOn(effect, name);
-                        if (result.ok) return;
-                        await openFallbackTryOn(name, image, 'Virtual try-on failed: ' + (result.reason || 'unknown') + ' Showing a simple preview instead.');
+                    pendingEffectUrl = '';
+                    deeparStarting = false;
+
+                    // No .deepar → PD only, clear top banner, never show the product photo as a fake try-on
+                    if (!(deeparReady && effect)) {
+                        await openCameraAndPd(
+                            name,
+                            image,
+                            'No try-on found for this frame — PD measurement only.',
+                            'info',
+                            session
+                        );
                         return;
                     }
-                    var msg = deeparReady && !effect
-                        ? 'No DeepAR effect uploaded for this frame yet. Upload a .deepar file on the product in ERP.'
-                        : null;
-                    await openFallbackTryOn(name, image, msg);
+
+                    // Has .deepar → open camera + PD first. DeepAR starts only after PD locks
+                    // (or immediately if a reading is already stored for this session).
+                    pendingEffectUrl = effect;
+                    var needsScan = PD.willMeasure();
+                    await openCameraAndPd(
+                        name,
+                        image,
+                        needsScan ? 'Finish the PD scan — glasses will appear after.' : '',
+                        needsScan ? 'info' : '',
+                        session,
+                        function () {
+                            // Fires when a scan locks OR when a stored PD is restored / PD is unavailable
+                            if (session !== trySession) return;
+                            setBanner('');
+                            launchPendingDeepAR(session);
+                        }
+                    );
                 });
             });
 

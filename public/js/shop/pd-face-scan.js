@@ -288,21 +288,135 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
     }
     function hideEyes() { show(E.eyeR, false); show(E.eyeL, false); }
 
-    /** Common quality gate; returns a coaching string or null. */
+    /** Common quality gate; returns a cue key (see CUES) or null when the pose is good. */
     function gate(a, step) {
-        if (a.irisPx < MIN_IRIS_PX || a.distMm > 650) return 'Move a little closer — about 40 cm (16 in) from the camera.';
-        if (a.distMm < 250) return 'Move back a little — about 40 cm (16 in) from the camera.';
-        if (lastLum < 55) return 'Need more light — face a window or lamp.';
-        if (Math.abs(a.roll) > 10) return 'Level your head — keep both eyes on the line.';
+        // Hysteresis: once the pose is accepted, tolerate a bit more drift before failing it,
+        // otherwise the cue flaps between "Face the camera" / "Hold still" and progress stalls.
+        const ok = E.guide && E.guide.classList.contains('is-good');
+        const k = ok ? 1.4 : 1;
+        if (a.irisPx < MIN_IRIS_PX || a.distMm > 650 * (ok ? 1.08 : 1)) return 'closer';
+        if (a.distMm < 250 / (ok ? 1.08 : 1)) return 'back';
+        if (lastLum < 55) return 'light';
+        if (Math.abs(a.roll) > 10 * k) return 'level';
         if (step === 'front') {
-            if (a.cx < 0.3 || a.cx > 0.7 || a.cy < 0.2 || a.cy > 0.65) return 'Center your face in the oval, eyes on the line.';
-            if (Math.abs(a.yaw) > 8) return 'Face the camera straight.';
-            if (a.irisSpread > 0.2) return 'Look straight into the camera lens.';
+            const m = ok ? 0.05 : 0;
+            if (a.cx < 0.3 - m || a.cx > 0.7 + m || a.cy < 0.2 - m || a.cy > 0.65 + m) return 'center';
+            if (Math.abs(a.yaw) > 8 * k) return 'straight';
+            if (a.irisSpread > 0.2 * k) return 'lens';
         } else if (a.cx < 0.2 || a.cx > 0.8 || a.cy < 0.15 || a.cy > 0.7) {
-            return 'Keep your face inside the oval while turning.';
+            return 'center';
         }
         return null;
     }
+
+    // ---- Face ID-style guide: tick ring + one big cue + three dots ----
+    const RING_N = 44;
+    const ticks = [];                 // { el, deg } deg: 0 = top, clockwise (screen space)
+    let ringMode = null;
+
+    function buildRing() {
+        if (!E.ring || ticks.length) return;
+        const NS = 'http://www.w3.org/2000/svg';
+        // viewBox 300×400 matches the 3:4 stage; ellipse = the old oval (62% wide, centred at 46%)
+        const cx = 150, cy = 184, rx = 96, ry = 128, len = 11;
+        for (let i = 0; i < RING_N; i++) {
+            const deg = i * 360 / RING_N;
+            const t = (deg - 90) * Math.PI / 180;
+            const px = cx + rx * Math.cos(t), py = cy + ry * Math.sin(t);
+            // outward normal of the ellipse
+            let nx = Math.cos(t) / rx, ny = Math.sin(t) / ry;
+            const nn = Math.hypot(nx, ny) || 1; nx /= nn; ny /= nn;
+            const line = document.createElementNS(NS, 'line');
+            line.setAttribute('x1', px.toFixed(2)); line.setAttribute('y1', py.toFixed(2));
+            line.setAttribute('x2', (px + nx * len).toFixed(2)); line.setAttribute('y2', (py + ny * len).toFixed(2));
+            E.ring.appendChild(line);
+            ticks.push({ el: line, deg });
+        }
+    }
+    const angDist = (a, b) => { const d = Math.abs(((a - b) % 360 + 540) % 360 - 180); return d; };
+
+    /**
+     * mode: 'front' fills from the top both ways; 'left'/'right' lights the side sector with a
+     * chase toward that side and fills it with progress; 'done' lights everything.
+     */
+    function paintRing(mode, progress) {
+        if (!ticks.length) return;
+        const p = clamp(progress || 0, 0, 1);
+        if (mode !== ringMode) {
+            ringMode = mode;
+            if (E.ring) E.ring.dataset.mode = mode;
+        }
+        const sector = mode === 'left' ? 270 : mode === 'right' ? 90 : null;
+        for (const t of ticks) {
+            let on = false, hint = false, delay = 0;
+            if (mode === 'done') on = true;
+            else if (mode === 'front') on = angDist(t.deg, 0) <= p * 180 + 0.01;
+            else if (sector !== null) {
+                const d = angDist(t.deg, sector);
+                if (d <= 70) { hint = true; delay = (70 - d) / 70 * 0.6; on = d <= p * 70; }
+            }
+            t.el.classList.toggle('is-on', on);
+            t.el.classList.toggle('is-hint', hint && !on);
+            if (hint) t.el.style.animationDelay = `${delay.toFixed(2)}s`;
+        }
+    }
+
+    const GLYPH = {
+        chevL: '<svg viewBox="0 0 48 24"><path d="M20 4l-8 8 8 8"/><path d="M30 4l-8 8 8 8"/><path d="M40 4l-8 8 8 8"/></svg>',
+        chevR: '<svg viewBox="0 0 48 24"><path d="M8 4l8 8-8 8"/><path d="M18 4l8 8-8 8"/><path d="M28 4l8 8-8 8"/></svg>',
+        in: '<svg viewBox="0 0 48 24"><path d="M4 12h14m0 0l-5-5m5 5l-5 5"/><path d="M44 12H30m0 0l5-5m-5 5l5 5"/></svg>',
+        out: '<svg viewBox="0 0 48 24"><path d="M18 12H4m0 0l5-5m-5 5l5 5"/><path d="M30 12h14m0 0l-5-5m5 5l-5 5"/></svg>',
+        eye: '<svg viewBox="0 0 48 24"><path d="M4 12s7-9 20-9 20 9 20 9-7 9-20 9S4 12 4 12z"/><circle cx="24" cy="12" r="4"/></svg>',
+        level: '<svg viewBox="0 0 48 24"><path d="M6 12h36"/><circle cx="16" cy="12" r="3.5"/><circle cx="32" cy="12" r="3.5"/></svg>',
+        center: '<svg viewBox="0 0 48 24"><path d="M14 4h-8v8M34 4h8v8M14 20h-8v-8M34 20h8v-8"/></svg>',
+        sun: '<svg viewBox="0 0 48 24"><circle cx="24" cy="12" r="5"/><path d="M24 1v3M24 20v3M13 12h-3M38 12h-3M16.2 4.2l2.1 2.1M29.7 17.7l2.1 2.1M16.2 19.8l2.1-2.1M29.7 6.3l2.1-2.1"/></svg>',
+        hold: '<svg viewBox="0 0 48 24"><circle cx="24" cy="12" r="9"/><path d="M24 7v5l3 3"/></svg>',
+        back: '<svg viewBox="0 0 48 24"><path d="M30 4l-8 8 8 8" class="g1"/><path d="M14 12h20" class="g2"/></svg>',
+        check: '<svg viewBox="0 0 48 24"><path d="M14 12l6 6 14-12"/></svg>',
+    };
+    const CUES = {
+        closer:   { text: 'Move closer',      glyph: 'in',     anim: 'pulse-in' },
+        back:     { text: 'Move back',        glyph: 'out',    anim: 'pulse-out' },
+        light:    { text: 'More light',       glyph: 'sun',    anim: 'pulse' },
+        level:    { text: 'Level your head',  glyph: 'level',  anim: 'tilt' },
+        center:   { text: 'Center your face', glyph: 'center', anim: 'pulse' },
+        straight: { text: 'Face the camera',  glyph: 'eye',    anim: 'pulse' },
+        lens:     { text: 'Look at the lens', glyph: 'eye',    anim: 'pulse' },
+        hold:     { text: 'Hold still',       glyph: 'hold',   anim: 'breathe' },
+        almost:   { text: 'Almost there',     glyph: 'hold',   anim: 'breathe' },
+        left:     { text: 'Turn left',        glyph: 'chevL',  anim: 'chase' },
+        right:    { text: 'Turn right',       glyph: 'chevR',  anim: 'chase' },
+        wrongL:   { text: 'Other way ←',      glyph: 'chevL',  anim: 'chase' },
+        wrongR:   { text: 'Other way →',      glyph: 'chevR',  anim: 'chase' },
+        center2:  { text: 'Back to center',   glyph: 'back',   anim: 'pulse' },
+        noface:   { text: 'Show your face',   glyph: 'eye',    anim: 'pulse' },
+        dark:     { text: 'Camera covered?',  glyph: 'sun',    anim: 'pulse' },
+        calc:     { text: 'Measuring…',       glyph: 'hold',   anim: 'spin' },
+        done:     { text: 'Done',             glyph: 'check',  anim: 'pop' },
+    };
+    let cueKey = null;
+    function setCue(key, free) {
+        if (!E.cue) return;
+        const k = free ? `free:${free}` : key;
+        if (k === cueKey) return;
+        cueKey = k;
+        const c = free ? { text: free, glyph: null, anim: 'pulse' } : (CUES[key] || null);
+        if (!c) { E.cue.hidden = true; return; }
+        E.cue.hidden = false;
+        E.cue.dataset.anim = c.anim;
+        if (E.cueIcon) E.cueIcon.innerHTML = c.glyph ? GLYPH[c.glyph] : '';
+        text(E.cueText, c.text);
+        // re-trigger the entrance animation
+        E.cue.classList.remove('is-in'); void E.cue.offsetWidth; E.cue.classList.add('is-in');
+    }
+    function paintDots(idx) {
+        if (!E.dots) return;
+        Array.from(E.dots.children).forEach((d, i) => {
+            d.classList.toggle('is-done', i < idx - 1);
+            d.classList.toggle('is-now', i === idx - 1);
+        });
+    }
+    function haptic(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* noop */ } }
 
     // ---- scan session ----
     function newScan() {
@@ -319,12 +433,17 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
 
     function paintStep(progress) {
         if (!scan) return;
-        const idx = stepIndex(scan.step);
-        text(E.steps, `Step ${idx} of 3 · ${{ front: 'Look at the camera', left: 'Turn left', right: 'Turn right' }[scan.step] || ''}`);
-        show(E.arrowLeft, scan.step === 'left');
-        show(E.arrowRight, scan.step === 'right');
+        paintDots(stepIndex(scan.step));
         show(E.skip, scan.step !== 'front');
-        if (E.progress) E.progress.style.width = `${clamp(Math.round(progress * 100), 0, 100)}%`;
+        paintRing(scan.step, progress);
+    }
+    function nextStep(step) {
+        scan.step = step;
+        scan.stepStarted = performance.now();
+        E.guide.classList.remove('is-good');
+        haptic(25);
+        setCue(step);
+        paintStep(0);
     }
 
     function tick(ts) {
@@ -342,7 +461,7 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
         catch (e) {
             detectErrors++;
             if (detectErrors === 1 || detectErrors % 50 === 0) console.warn('PD detect error', e);
-            if (detectErrors > 30) { coach('Face tracking failed on this device — enter your PD below.'); stopLoop(); show(E.actions, true); }
+            if (detectErrors > 30) { coach('Face tracking failed — enter your PD below'); stopLoop(); show(E.actions, true); }
             return;
         }
         detectErrors = 0;
@@ -351,9 +470,7 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
             E.guide.classList.remove('is-good');
             hideEyes();
             if (tickCount % 6 !== 0 && tickCount < 6) lastLum = brightness(v);
-            coach(lastLum < 25
-                ? 'Camera looks dark — uncover the camera or turn on a light.'
-                : 'No face found — look at the camera, about 40 cm away.');
+            setCue(lastLum < 25 ? 'dark' : 'noface');
             text(E.pillValue, '—');
             return;
         }
@@ -366,7 +483,7 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
             if (bad) {
                 if (scan.front.length > 6) scan.front.splice(0, 2);
                 E.guide.classList.remove('is-good');
-                coach(bad);
+                setCue(bad);
                 paintStep(scan.front.length / NEED_FRONT);
                 return;
             }
@@ -374,21 +491,17 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
             if (a.nearPdMm > 45 && a.nearPdMm < 85) scan.front.push(a);
             const live = median(scan.front.map((f) => f.nearPdMm * (f.distMm + EYE_ROT_MM) / f.distMm));
             text(E.pillValue, isFinite(live) ? `~${fmt(live)} mm` : '…');
-            coach(`Hold still… ${Math.min(100, Math.round(scan.front.length / NEED_FRONT * 100))}%`);
+            setCue('hold');
             paintStep(scan.front.length / NEED_FRONT);
             if (scan.front.length >= NEED_FRONT) {
                 const s = scan.front.map((f) => f.nearPdMm).sort((x, y) => x - y);
                 if (quantile(s, 0.75) - quantile(s, 0.25) > 2.5) {
                     scan.front = scan.front.slice(Math.floor(scan.front.length / 2));
-                    coach('Almost — hold still a moment longer.');
+                    setCue('almost');
                     return;
                 }
                 if (scan.skipTurns) { finish(); return; }
-                scan.step = 'left';
-                scan.stepStarted = performance.now();
-                E.guide.classList.remove('is-good');
-                coach('Now slowly turn your head to the LEFT until the arrow fills.');
-                paintStep(0);
+                nextStep('left');
             }
             return;
         }
@@ -398,31 +511,25 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
             const bucket = scan.step === 'left' ? scan.left : scan.right;
             const turned = a.yaw * sideSign; // positive when turning the requested way
             const bad = gate(a, scan.step);
-            if (bad) { coach(bad); paintStep(turned / TURN_TARGET); return; }
+            if (bad) { setCue(bad); paintStep(turned / TURN_TARGET); return; }
             if (turned >= TURN_MIN && turned <= TURN_MAX) {
                 bucket.push(a);
                 if (scan.step === 'left') scan.maxLeft = Math.max(scan.maxLeft, turned);
                 else scan.maxRight = Math.max(scan.maxRight, turned);
             }
             const reached = (scan.step === 'left' ? scan.maxLeft : scan.maxRight) >= TURN_TARGET;
-            const progress = Math.min(1, Math.max(turned, 0) / TURN_TARGET);
+            const progress = reached ? 1 : Math.min(1, Math.max(turned, 0) / TURN_TARGET);
             E.guide.classList.toggle('is-good', reached);
             paintStep(progress);
-            if (turned < -TURN_MIN) coach(`Other way — turn your head to the ${scan.step.toUpperCase()}.`);
-            else if (!reached) coach(`Keep turning ${scan.step}… ${Math.round(progress * 100)}%`);
-            else coach('Great — now slowly come back to the centre.');
+            if (turned < -TURN_MIN) setCue(scan.step === 'left' ? 'wrongL' : 'wrongR');
+            else if (!reached) setCue(scan.step);
+            else setCue('center2');
 
             const done = reached && bucket.length >= NEED_SIDE && Math.abs(a.yaw) < 12;
             const timedOut = elapsed > STEP_TIMEOUT;
             if (done || timedOut) {
-                if (scan.step === 'left') {
-                    scan.step = 'right';
-                    scan.stepStarted = performance.now();
-                    coach('Now slowly turn your head to the RIGHT.');
-                    paintStep(0);
-                } else {
-                    finish();
-                }
+                if (scan.step === 'left') nextStep('right');
+                else finish();
             }
         }
     }
@@ -432,7 +539,7 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
         const s = scan;
         scan = null;
         stopLoop();
-        coach('Calculating…');
+        setCue('calc');
         try {
             const r = computeMeasurements(s);
             result = r;
@@ -441,7 +548,7 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
             if (onLocked) onLocked(r);
         } catch (e) {
             console.warn('PD compute failed', e);
-            coach('Could not compute — please try again.');
+            coach('Could not measure — trying again');
             setTimeout(restart, 1200);
         }
     }
@@ -508,22 +615,31 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
     }
 
     // ---- painting ----
-    function coach(msg) { text(E.coach, msg || ''); }
+    /** Free-text cue (loading / errors). Everything else goes through setCue(key). */
+    function coach(msg) { if (msg) setCue(null, msg); else setCue(null); }
 
     function paintLocked() {
         E.pill.classList.add('is-locked');
         E.pill.classList.toggle('is-manual', !!result.manual);
         text(E.pillValue, `${fmt(result.pd)} mm`);
-        E.guide.classList.add('is-off');
-        E.guide.classList.remove('is-good');
         hideEyes();
-        coach('');
-        text(E.steps, '');
-        show(E.arrowLeft, false); show(E.arrowRight, false); show(E.skip, false);
-        if (E.progress) E.progress.style.width = '0%';
+        show(E.skip, false);
         if (E.manualInput) E.manualInput.value = '';
         show(E.actions, visible);
         paintResults();
+        // brief "done" beat: full green ring + check, then the guide fades out
+        if (!result.manual && E.guide && !E.guide.classList.contains('is-off')) {
+            paintRing('done', 1);
+            paintDots(4);
+            setCue('done');
+            E.guide.classList.add('is-good');
+            haptic([30, 60, 30]);
+            setTimeout(() => { if (result) { E.guide.classList.add('is-off'); E.guide.classList.remove('is-good'); setCue(null); } }, 900);
+        } else {
+            E.guide.classList.add('is-off');
+            E.guide.classList.remove('is-good');
+            setCue(null);
+        }
         emit('locked');
     }
 
@@ -531,7 +647,10 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
         E.pill.classList.remove('is-locked', 'is-manual');
         text(E.pillValue, '…');
         E.guide.classList.remove('is-off', 'is-good');
-        coach('Glasses hidden while scanning. Face the camera straight, about 40 cm (16 in) away.');
+        buildRing();
+        paintRing('front', 0);
+        paintDots(1);
+        setCue('straight');
         show(E.actions, false);
         show(E.verdict, false);
         show(E.results, false);
@@ -693,8 +812,10 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
     }
 
     // ---- public ----
+    let startSeq = 0; // stop() during an in-flight start() must win
     async function start(videoEl, lockedCb, stateCb) {
         if (!enabled) return false;
+        const seq = ++startSeq;
         onLocked = lockedCb || null;
         onState = stateCb || null;
         show(E.toggle, true);
@@ -703,13 +824,22 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
         result = restore();
         show(E.layer, true);
         text(E.pillValue, '…');
-        coach('Loading face scanner…');
+        buildRing();
+        // Already have a locked reading and no video to attach → just re-show the result
+        // (used after DeepAR takes over the camera; never open a second stream).
+        if (result && !videoEl) {
+            applyVisibility();
+            return true;
+        }
+        coach('Loading…');
         try {
             await load();
+            if (seq !== startSeq) return false;
             source = videoEl || await openOwnCamera();
+            if (seq !== startSeq) { closeOwnCamera(); source = null; return false; }
         } catch (e) {
             console.warn('PD scanner unavailable', e);
-            show(E.layer, false); show(E.toggle, false);
+            if (seq === startSeq) { show(E.layer, false); show(E.toggle, false); }
             return false;
         }
         applyVisibility();
@@ -717,6 +847,7 @@ export function createPdScanner({ cfg = {}, camera, els, mirrored = true }) {
     }
 
     function stop() {
+        startSeq++;
         stopLoop();
         closeOwnCamera();
         source = null; onLocked = null; onState = null; scan = null;
