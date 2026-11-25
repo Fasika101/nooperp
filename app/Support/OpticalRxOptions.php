@@ -12,7 +12,9 @@ class OpticalRxOptions
     public static function sphereKeys(string $vision): array
     {
         if ($vision === 'progressive') {
-            return self::quarterDiopterKeys(-3.0, 3.0);
+            // Progressive SPH dropdown: −8.00 … +8.00 (0.25 steps). Pricing for |SPH| > 3
+            // is handled in OpticalRxConfig (high-SPH flat price), not the ±3 seed range.
+            return self::quarterDiopterKeys(-8.0, 8.0);
         }
 
         return self::quarterDiopterKeys(-6.0, 6.0);

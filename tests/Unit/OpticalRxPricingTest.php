@@ -120,7 +120,37 @@ class OpticalRxPricingTest extends TestCase
     {
         $this->seedProgressivePrices();
 
+        // +SPH still within ±3, ADD above +3 → ADD tier 2
         $total = OpticalRxConfig::prescriptionAddOn(
+            'progressive',
+            '2.50',
+            '-',
+            '1.00',
+            '-',
+            '3.50',
+            '3.00',
+        );
+
+        $this->assertSame(4500.0, $total);
+    }
+
+    public function test_progressive_high_plus_sph_uses_high_sph_price(): void
+    {
+        $this->seedProgressivePrices();
+
+        $alone = OpticalRxConfig::prescriptionAddOn(
+            'progressive',
+            '4.00',
+            '-',
+            '0.00',
+            '-',
+            '-',
+            '-',
+        );
+        $this->assertSame(6400.0, $alone);
+
+        // |SPH| > 3 replaces ADD flat tiers for +SPH
+        $withAdd = OpticalRxConfig::prescriptionAddOn(
             'progressive',
             '4.00',
             '-',
@@ -129,8 +159,50 @@ class OpticalRxPricingTest extends TestCase
             '3.50',
             '3.00',
         );
+        $this->assertSame(6400.0, $withAdd);
+    }
 
-        $this->assertSame(4500.0, $total);
+    public function test_progressive_high_negative_sph_uses_high_sph_price(): void
+    {
+        $this->seedProgressivePrices();
+
+        $alone = OpticalRxConfig::prescriptionAddOn(
+            'progressive',
+            '-4.00',
+            '-',
+            '0.00',
+            '-',
+            '-',
+            '-',
+        );
+        $this->assertSame(6400.0, $alone);
+
+        // Strong −SPH stacks with ADD tier
+        $withAdd = OpticalRxConfig::prescriptionAddOn(
+            'progressive',
+            '-4.00',
+            '-',
+            '0.00',
+            '-',
+            '2.00',
+            '-',
+        );
+        $this->assertSame(10000.0, $withAdd); // 6400 + 3600
+    }
+
+    public function test_progressive_sph_options_include_pm8(): void
+    {
+        OpticalRxConfig::clearCache();
+
+        $options = OpticalRxConfig::sphereOptions('progressive');
+
+        $this->assertArrayHasKey('-8.00', $options);
+        $this->assertArrayHasKey('8.00', $options);
+        $this->assertArrayHasKey('-3.25', $options);
+        $this->assertArrayHasKey('3.25', $options);
+        $this->assertArrayHasKey('0.00', $options);
+        $this->assertArrayNotHasKey('-8.25', $options);
+        $this->assertArrayNotHasKey('8.25', $options);
     }
 
     public function test_progressive_negative_sph_alone(): void
@@ -222,5 +294,6 @@ class OpticalRxPricingTest extends TestCase
         Setting::set(OpticalRxConfig::PROGRESSIVE_ADD_TIER2_SETTING, 4500);
         Setting::set(OpticalRxConfig::PROGRESSIVE_NEGATIVE_SPH_SETTING, 2900);
         Setting::set(OpticalRxConfig::PROGRESSIVE_CYL_SETTING, 2900);
+        Setting::set(OpticalRxConfig::PROGRESSIVE_HIGH_SPH_SETTING, 6400);
     }
 }

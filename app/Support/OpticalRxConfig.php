@@ -20,12 +20,17 @@ class OpticalRxConfig
     public const PROGRESSIVE_ADD_TIER2_SETTING = 'optical_pg_add_tier2_price';
     public const PROGRESSIVE_NEGATIVE_SPH_SETTING = 'optical_pg_negative_sph_price';
     public const PROGRESSIVE_CYL_SETTING = 'optical_pg_cyl_price';
+    /** Flat price when progressive |SPH| is above PROGRESSIVE_HIGH_SPH_MAX */
+    public const PROGRESSIVE_HIGH_SPH_SETTING = 'optical_pg_high_sph_price';
 
     /** ADD boundary (diopters): up to this value uses tier 1, above uses tier 2 */
     public const PROGRESSIVE_ADD_TIER1_MAX = 3.00;
 
     /** +SPH boundary for flat plus-progressive pricing paired with ADD */
     public const PROGRESSIVE_PLUS_SPH_TIER1_MAX = 3.00;
+
+    /** |SPH| above this uses the high-SPH progressive price (default 6400) */
+    public const PROGRESSIVE_HIGH_SPH_MAX = 3.00;
 
     /**
      * Returned from prescriptionAddOn() when single-vision compound values are
@@ -160,6 +165,11 @@ class OpticalRxConfig
         return (float) Setting::get(self::PROGRESSIVE_CYL_SETTING, 2900);
     }
 
+    public static function getProgressiveHighSphPrice(): float
+    {
+        return (float) Setting::get(self::PROGRESSIVE_HIGH_SPH_SETTING, 6400);
+    }
+
     private static function isBlank(?string $val): bool
     {
         if ($val === null || $val === '' || $val === OpticalRxOptions::UNKNOWN) {
@@ -230,6 +240,33 @@ class OpticalRxConfig
         return $max;
     }
 
+    /** Worst-eye absolute SPH across both eyes. */
+    private static function effectiveAbsSphere(?string $odSph, ?string $osSph): float
+    {
+        return max(self::absFloat($odSph), self::absFloat($osSph));
+    }
+
+    private static function hasHighSphere(?string $odSph, ?string $osSph): bool
+    {
+        return self::effectiveAbsSphere($odSph, $osSph) > self::PROGRESSIVE_HIGH_SPH_MAX;
+    }
+
+    /**
+     * SPH base for progressive: |SPH| > 3 → high price (6400); else −SPH → negative price (2900).
+     */
+    private static function progressiveSphBasePrice(?string $odSph, ?string $osSph): float
+    {
+        if (self::hasHighSphere($odSph, $osSph)) {
+            return self::getProgressiveHighSphPrice();
+        }
+
+        if (self::hasNegativeSphere($odSph, $osSph)) {
+            return self::getProgressiveNegativeSphPrice();
+        }
+
+        return 0.0;
+    }
+
     private static function progressiveAddTierPrice(float $effectiveAdd): float
     {
         return $effectiveAdd > self::PROGRESSIVE_ADD_TIER1_MAX
@@ -238,7 +275,8 @@ class OpticalRxConfig
     }
 
     /**
-     * Flat plus-progressive price when +SPH/plano is paired with ADD (not stacked).
+     * Flat plus-progressive price when +SPH/plano (within ±3) is paired with ADD (not stacked).
+     * |SPH| > 3 uses the high-SPH price instead (see progressivePrescriptionAddOn).
      */
     private static function progressivePlusFlatPrice(float $effectivePlusSph, float $effectiveAdd): float
     {
@@ -258,11 +296,12 @@ class OpticalRxConfig
      * Progressive lens diopter add-on (pair price).
      *
      *   ADD only (plano/+SPH 0–+3)           → tier 1 (default 3600)
-     *   ADD > +3 (or +SPH > +3 with ADD > +3) → tier 2 (default 4500)
-     *   −SPH alone                            → 2900
+     *   ADD > +3 (with +SPH ≤ +3)            → tier 2 (default 4500)
+     *   |SPH| > 3 (alone or with ADD, no CYL/− stack) → high SPH price (default 6400)
+     *   −SPH alone (|SPH| ≤ 3)               → 2900
      *   CYL alone                             → 2900
-     *   (−SPH or CYL) + ADD                   → 2900 + ADD tier price (stacked)
-     *   +SPH + ADD (no −SPH/CYL)              → flat ADD tier price (not stacked)
+     *   (−SPH or CYL) + ADD                   → SPH/CYL base + ADD tier (stacked)
+     *   +SPH ≤ +3 + ADD (no −SPH/CYL)         → flat ADD tier price (not stacked)
      */
     private static function progressivePrescriptionAddOn(
         ?string $odSph,
@@ -274,6 +313,7 @@ class OpticalRxConfig
     ): float {
         $hasAdd = self::hasAddPower($odAdd, $osAdd);
         $hasNegSph = self::hasNegativeSphere($odSph, $osSph);
+        $hasHighSph = self::hasHighSphere($odSph, $osSph);
         $hasCyl = self::hasCylinder($odCyl, $osCyl);
         $hasSph = ! self::isBlank($odSph) || ! self::isBlank($osSph);
 
@@ -283,17 +323,24 @@ class OpticalRxConfig
 
         $effectiveAdd = self::effectiveAddPower($odAdd, $osAdd);
         $addTierPrice = self::progressiveAddTierPrice($effectiveAdd);
+        $sphBase = self::progressiveSphBasePrice($odSph, $osSph);
 
+        // −SPH or CYL with ADD → stack. High |SPH| uses 6400 as the SPH base.
         if ($hasAdd && ($hasNegSph || $hasCyl)) {
             $base = $hasCyl
                 ? self::getProgressiveCylPrice()
-                : self::getProgressiveNegativeSphPrice();
+                : $sphBase;
 
             return round($base + $addTierPrice, 2);
         }
 
         if ($hasCyl) {
             return round(self::getProgressiveCylPrice(), 2);
+        }
+
+        // |SPH| > 3 alone, or +SPH > 3 with ADD (replaces ADD flat tiers)
+        if ($hasHighSph) {
+            return round(self::getProgressiveHighSphPrice(), 2);
         }
 
         if ($hasNegSph) {

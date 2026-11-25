@@ -49,6 +49,7 @@ class LensRxValuesSettingsPage extends Page
             'progressive_add_tier2_price' => OpticalRxConfig::getProgressiveAddTier2Price() ?: '',
             'progressive_negative_sph_price' => OpticalRxConfig::getProgressiveNegativeSphPrice() ?: '',
             'progressive_cyl_price' => OpticalRxConfig::getProgressiveCylPrice() ?: '',
+            'progressive_high_sph_price' => OpticalRxConfig::getProgressiveHighSphPrice() ?: '',
         ]);
     }
 
@@ -62,6 +63,7 @@ class LensRxValuesSettingsPage extends Page
         Setting::set(OpticalRxConfig::PROGRESSIVE_ADD_TIER2_SETTING, (float) ($data['progressive_add_tier2_price'] ?? 0));
         Setting::set(OpticalRxConfig::PROGRESSIVE_NEGATIVE_SPH_SETTING, (float) ($data['progressive_negative_sph_price'] ?? 0));
         Setting::set(OpticalRxConfig::PROGRESSIVE_CYL_SETTING, (float) ($data['progressive_cyl_price'] ?? 0));
+        Setting::set(OpticalRxConfig::PROGRESSIVE_HIGH_SPH_SETTING, (float) ($data['progressive_high_sph_price'] ?? 0));
 
         Notification::make()->success()->title('Lens pricing saved')->send();
     }
@@ -159,12 +161,12 @@ class LensRxValuesSettingsPage extends Page
 
         return $schema->components([
             Section::make('Progressive — Lens Pricing')
-                ->description('Progressive add-on is driven by ADD power. Flat price for +SPH/plano with ADD; stacked price when −SPH or CYL is present with ADD.')
+                ->description('Progressive SPH goes from −8.00 to +8.00. |SPH| above ±3.00 uses the high SPH price. Flat ADD tiers for mild +SPH/plano; stacked when −SPH or CYL is present with ADD.')
                 ->columns(2)
                 ->schema([
                     TextInput::make('progressive_add_tier1_price')
                         ->label('ADD tier 1 (0 to +3.00)')
-                        ->helperText('Plano/+SPH with ADD up to +3.00, or ADD-only progressive')
+                        ->helperText('Plano/+SPH (≤ +3.00) with ADD up to +3.00, or ADD-only progressive')
                         ->numeric()
                         ->minValue(0)
                         ->step(0.01)
@@ -173,7 +175,7 @@ class LensRxValuesSettingsPage extends Page
 
                     TextInput::make('progressive_add_tier2_price')
                         ->label('ADD tier 2 (above +3.00)')
-                        ->helperText('ADD above +3.00, or +SPH and ADD both above +3.00')
+                        ->helperText('ADD above +3.00 when SPH is within ±3.00')
                         ->numeric()
                         ->minValue(0)
                         ->step(0.01)
@@ -181,13 +183,22 @@ class LensRxValuesSettingsPage extends Page
                         ->placeholder('4500.00'),
 
                     TextInput::make('progressive_negative_sph_price')
-                        ->label('Negative SPH price')
-                        ->helperText('Any −SPH; stacks with ADD tier when ADD is present')
+                        ->label('Negative SPH price (within ±3.00)')
+                        ->helperText('−SPH up to −3.00; stacks with ADD tier when ADD is present')
                         ->numeric()
                         ->minValue(0)
                         ->step(0.01)
                         ->suffix($currency)
                         ->placeholder('2900.00'),
+
+                    TextInput::make('progressive_high_sph_price')
+                        ->label('High SPH price (|SPH| above ±3.00)')
+                        ->helperText('Any SPH stronger than ±3.00 (up to ±8.00). Replaces ADD flat tiers for strong +SPH; stacks with ADD for strong −SPH.')
+                        ->numeric()
+                        ->minValue(0)
+                        ->step(0.01)
+                        ->suffix($currency)
+                        ->placeholder('6400.00'),
 
                     TextInput::make('progressive_cyl_price')
                         ->label('CYL price')
